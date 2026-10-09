@@ -1,0 +1,11 @@
+# .NET / Godot build output
+bin/
+obj/
+.godot/
+*.user
+*.suo
+.vs/
+.idea/
+
+# Machine-specific build paths. Copy SaveSlots/Directory.Build.props.example to set them.
+Directory.Build.props
