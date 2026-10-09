@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  # Weekly, so a new advisory against a pinned package fails the audit without waiting for a push.
+  schedule:
+    - cron: '0 9 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # global-json-file, not a version string: the runner image ships several SDKs and the newest
+      # one wins unless the repo pins it, which silently changes build and test behaviour.
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      # --locked-mode fails if the resolved dependency graph differs from the committed lock file,
+      # so a dependency cannot change without that change appearing in the diff.
+      - name: Restore (locked)
+        run: dotnet restore tests/SaveSlots.Tests/SaveSlots.Tests.csproj --locked-mode
+
+      - name: Test
+        run: dotnet test tests/SaveSlots.Tests/SaveSlots.Tests.csproj --no-restore --verbosity normal
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      # Fails on any known vulnerability, deprecated package, or floating version range.
+      - name: Audit dependencies
+        shell: pwsh
+        run: ./scripts/Audit-Dependencies.ps1
+
+      # The mod project cannot be compiled here: it links the game's own assemblies, which are not
+      # redistributable and are therefore not in this repository. Restoring it is enough to run
+      # NuGetAudit against it. It keeps no lock file, because the Godot SDK resolves a different
+      # graph per configuration; see the comment in SaveSlots.csproj.
+      - name: Restore the mod project
+        run: dotnet restore SaveSlots/SaveSlots.csproj
