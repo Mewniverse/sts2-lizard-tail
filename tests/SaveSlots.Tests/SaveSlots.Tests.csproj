@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Tests the mod's pure logic. It deliberately does NOT reference the mod project: that project
+    targets the Godot SDK and links the game's assemblies, which cannot load outside the game.
+    Instead the engine-independent source files are compiled into this project directly, and the
+    save-reading and slot rules are tested here without the game.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>SaveSlots.Tests</RootNamespace>
+    <!-- Supply-chain controls; see scripts/Audit-Dependencies.ps1. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- xunit v3 runs on Microsoft.Testing.Platform. The .NET 10 SDK dropped the old VSTest bridge,
+         so opt in explicitly and `dotnet test` keeps working on both SDK 9 and SDK 10. -->
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../SaveSlots/SaveSlotsCode/Core/*.cs" Link="Linked/Core/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit.v3" Version="4.0.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <!-- Microsoft.NET.Test.Sdk drags in a deprecated 5.0.0 of this package; pin it forward so the
+         dependency audit stays clean. Remove once the test SDK stops referencing the old version. -->
+    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="10.0.12" />
+  </ItemGroup>
+
+</Project>
