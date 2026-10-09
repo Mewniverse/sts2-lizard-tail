@@ -1,0 +1,126 @@
+<Project Sdk="Godot.NET.Sdk/4.5.1" InitialTargets="CheckDependencyPaths">
+    <Import Project=".\Sts2PathDiscovery.props"/>
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>true</ImplicitUsings>
+        <Nullable>enable</Nullable> <!--Makes code analysis regarding null values stricter.-->
+        <Publicize>False</Publicize> <!--Allows access to originally private/protected members but may (unlikely to) cause errors.-->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        
+        <AppOutputBase>$(MSBuildProjectDirectory)\</AppOutputBase>
+        <PathMap>$(AppOutputBase)=.\</PathMap>
+        <GodotDisabledSourceGenerators>GodotPluginsInitializer</GodotDisabledSourceGenerators>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <!-- Supply-chain controls. NuGetAudit checks every direct and transitive package against the
+             GitHub Advisory Database during restore. See scripts/Audit-Dependencies.ps1. -->
+        <NuGetAudit>true</NuGetAudit>
+        <NuGetAuditMode>all</NuGetAuditMode>
+        <NuGetAuditLevel>low</NuGetAuditLevel>
+
+        <!-- Deliberately no lock file for this project. The Godot SDK auto-references
+             GodotSharpEditor outside Release, so the restore graph differs per configuration and
+             NuGet rewrites any lock file it finds, which left the working tree permanently dirty
+             and could land a lock file that fails CI. Little is lost: the only dependency that is
+             not auto-referenced by the SDK at its own pinned version is the analyzer below, which
+             is itself pinned. NuGetAudit still runs on every restore. The test project, which is
+             where the real third-party surface lives, does keep a lock file. -->
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <!-- Diasble architecture mismatch warning; mods are ideally built for all platforms (MSIL)
+             while your local StS2 version will be for your specific platform. -->
+        <NoWarn>$(NoWarn);MSB3270</NoWarn>
+        <!-- STS002 asks for localization files to analyse; this mod has no game text of its own. -->
+        <NoWarn>$(NoWarn);STS002</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup Condition="Exists('$(Sts2DataDir)')" >
+        <Reference Include="0Harmony">
+            <HintPath>$(Sts2DataDir)/0Harmony.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="sts2">
+            <HintPath>$(Sts2DataDir)/sts2.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+    </ItemGroup>
+
+    <ItemGroup Condition="$(Publicize)">
+        <PackageReference Include="Krafs.Publicizer" Version="2.3.0" PrivateAssets="All"/>
+        <Publicize Include="sts2" IncludeVirtualMembers="false" IncludeCompilerGeneratedMembers="false" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Pinned rather than floating: this analyzer executes during every build, so a new version
+             should be an explicit, reviewed change rather than something restore picks up silently. -->
+        <PackageReference Include="Alchyr.Sts2.ModAnalyzers" Version="0.1.9" />
+        <!-- Generates a .pck file when building if only using simple assets. May not work on all setups. Uncomment to test. -->
+        <!-- <PackageReference Include="BSchneppe.StS2.PckPacker" Version="0.1.1" PrivateAssets="All" /> -->
+        <AdditionalFiles Include="SaveSlots/localization/**/*.json"/> <!-- Used by analyzer -->
+    </ItemGroup>
+
+    <ItemGroup>
+        <Compile Remove="SaveSlots/**" />
+        <Compile Remove="materials/**" />
+        <Compile Remove="shaders/**" />
+        <Compile Remove="images/**" />
+        <EmbeddedResource Remove="SaveSlots/**" />
+        <EmbeddedResource Remove="materials/**" />
+        <EmbeddedResource Remove="shaders/**" />
+        <EmbeddedResource Remove="images/**" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Condition="Exists('Directory.Build.props')" Include="Directory.Build.props"/>
+        <None Include=".gitignore" />
+        <None Include="SaveSlots.json" />
+        <None Include="project.godot"/>
+        <None Include="SaveSlots/**" />
+    </ItemGroup>
+    
+    <Target Name="CheckDependencyPaths" >
+        <!-- Compiling needs the game's assemblies, but restoring does not. Letting restore succeed
+             without the game is what allows CI (and the dependency audit) to run on a machine that
+             has no Slay the Spire 2 installed. -->
+        <Error
+                Text=" Slay the Spire 2 data not found at path '$(Sts2DataDir)'"
+                Condition="'$(MSBuildIsRestoring)' != 'true' and ('$(Sts2DataDir)' == '' or !Exists('$(Sts2DataDir)'))" />
+    </Target>
+
+    <Target Name="CopyToModsFolderOnBuild" AfterTargets="PostBuildEvent">
+        <Message Text="Copying .dll .pdb and .json to mods folder." Importance="high" />
+        <!-- The running game holds an open handle on the mod assembly, and mods cannot hot-reload
+             anyway. A failed copy while the game is open is expected, so warn and carry on rather
+             than failing a build whose compile step succeeded. -->
+        <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModsPath)$(MSBuildProjectName)/"
+              ContinueOnError="WarnAndContinue">
+            <Output TaskParameter="CopiedFiles" ItemName="_SaveSlotsCopied" />
+        </Copy>
+        <Copy SourceFiles="$(AssemblyName).json" DestinationFolder="$(ModsPath)$(MSBuildProjectName)/"
+              ContinueOnError="WarnAndContinue" />
+        <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="$(ModsPath)$(MSBuildProjectName)/"
+              ContinueOnError="WarnAndContinue" />
+        <Message Condition="'@(_SaveSlotsCopied)' == ''" Importance="high"
+                 Text="Save Slots: could not install into the mods folder, most likely because the game is running. Quit the game and build again." />
+    </Target>
+
+    <Target Name="CopyQuickPck" AfterTargets="PackPck" Condition="Exists('$(PckPackerOutputPath)') And '$(PckPackerSkipped)' != 'true'">
+        <Message Text="Copying quick .pck to mods folder." Importance="high"/>
+        <Copy SourceFiles="$(PckPackerOutputPath)"
+              DestinationFolder="$(ModsPath)/$(MSBuildProjectName)" />
+    </Target>
+
+    <Target Name="NeedGodotForPublish" BeforeTargets="Publish">
+        <Error Text=" Godot path must be set up before publishing; Godot not found at path '$(GodotPath)'. Check Directory.Build.props file."
+               Condition="'$(GodotPath)' == '' or !Exists('$(GodotPath)')"/>
+    </Target>
+
+    <Target Name="GodotPublish" AfterTargets="Publish" Condition="'$(GodotPath)' != '' and Exists('$(GodotPath)') and '$(IsInnerGodotExport)' != 'true'">
+        <Message Text="Exporting Godot .pck to mods folder" Importance="high"/>
+        <Exec Command="&quot;$(GodotPath)&quot; --headless --export-pack &quot;BasicExport&quot; &quot;$(ModsPath)$(MSBuildProjectName)/$(MSBuildProjectName).pck&quot;"
+              EnvironmentVariables="IsInnerGodotExport=true;MSBUILDDISABLENODEREUSE=1"
+              ContinueOnError="WarnAndContinue"/>
+    </Target>
+</Project>

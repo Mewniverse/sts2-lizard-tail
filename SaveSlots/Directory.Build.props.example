@@ -1,0 +1,13 @@
+<!--
+  Copy to Directory.Build.props (git-ignored) to set machine-specific paths. Neither is needed for a
+  normal build: the game is found automatically on a Steam install, and this mod ships no .pck.
+-->
+<Project>
+    <PropertyGroup>
+        <!-- MegaDot / Godot 4.5.1 mono executable, only used by `dotnet publish` to export a .pck. -->
+        <!-- <GodotPath>C:/megadot/MegaDot_v4.5.1-stable_mono_win64.exe</GodotPath> -->
+
+        <!-- Set if the game is not found automatically. -->
+        <!-- <Sts2Path>D:/SteamLibrary/steamapps/common/Slay the Spire 2</Sts2Path> -->
+    </PropertyGroup>
+</Project>
