@@ -160,6 +160,14 @@ public static class SlotText
             .OrderBy(p => p.NetId == localPlayerId ? 0 : 1)
             .Select(p => $"{(p.NetId == localPlayerId ? "You" : nameOf(p.NetId) ?? "Unknown player")} ({Pretty(p.CharacterId)})"));
 
+    /// <summary>"Ironclad": a solo run has one player, you, so only the character is worth showing.</summary>
+    public static string Characters(RunSummary run) =>
+        run.Players.Count == 0 ? "Unknown character" : string.Join(", ", run.Players.Select(p => Pretty(p.CharacterId)));
+
+    /// <summary>The first line of a run's row: who is in a multiplayer run, or the character of a solo one.</summary>
+    public static string Who(SaveKind kind, RunSummary run, ulong localPlayerId, Func<ulong, string?> nameOf) =>
+        kind == SaveKind.Solo ? Characters(run) : Players(run, localPlayerId, nameOf);
+
     /// <summary>"Saved 14 Nov, 22:13" in local time, from a Unix time in seconds.</summary>
     public static string Saved(long unixSeconds, TimeZoneInfo? zone = null)
     {
@@ -194,9 +202,49 @@ public static class SlotText
     /// <summary>Shown on the active run when Steam Cloud could not be read; nothing is hidden or cleared meanwhile.</summary>
     public const string CloudUnknown = "Steam Cloud could not be checked for this run just now.";
 
-    /// <summary>Shown when the game has a multiplayer save that cannot be read at all.</summary>
-    public const string Unreadable = "The game's multiplayer save cannot be read. Press Load once so the game sets it aside; the mod parks a copy of whatever it holds.";
+    /// <summary>
+    /// How the game comes to repair a damaged save or set it aside. Multiplayer: when Load is pressed.
+    /// Solo: by itself, since the main menu loads the solo save every time it draws its buttons.
+    /// </summary>
+    public static string HowTheGameRepairs(SaveKind kind) => kind == SaveKind.Solo
+        ? "The game repairs it or sets it aside the next time it draws the main menu"
+        : "Press Load once so the game repairs it or sets it aside";
+
+    /// <summary>Shown when the game has a save that cannot be read at all.</summary>
+    public static string Unreadable(SaveKind kind) => kind == SaveKind.Solo
+        ? "The game's solo save cannot be read. The game sets it aside the next time it draws the main menu; the mod parks a copy of whatever it holds."
+        : "The game's multiplayer save cannot be read. Press Load once so the game sets it aside; the mod parks a copy of whatever it holds.";
 
     /// <summary>Shown when the game's save file is damaged and the picker is reading its .backup instead.</summary>
-    public const string Damaged = "The game's save file is damaged; this is its backup. Press Load once so the game repairs it or sets it aside before parking.";
+    public static string Damaged(SaveKind kind) =>
+        $"The game's save file is damaged; this is its backup. {HowTheGameRepairs(kind)} before parking.";
+
+    public static string Title(SaveKind kind) => kind == SaveKind.Solo ? "Solo runs" : "Multiplayer runs";
+
+    /// <summary>The line under the title saying what the panel is for.</summary>
+    public static string Hint(SaveKind kind) => kind == SaveKind.Solo
+        ? "Continue picks up the active run. Park it to start a new one; make any parked run active to continue it."
+        : "Load continues the active run. Park it to host a new one; make any parked run active to continue it.";
+
+    public static string NoActive(SaveKind kind) => $"No active run. {SaveKinds.NewRunButton(kind)} starts a new one.";
+
+    /// <summary>What Park this run answers.</summary>
+    public static string Parked(SaveKind kind) => $"Parked. {SaveKinds.NewRunButton(kind)} now starts a new run.";
+
+    /// <summary>What Park this run answers when Steam Cloud still holds the run it just cleared.</summary>
+    public static string ParkedButCloudKept(SaveKind kind) => kind == SaveKind.Solo
+        ? "Parked, but Steam Cloud kept the old save, so it comes back at the next launch unless you start a run first."
+        : "Parked, but Steam Cloud kept the old save, so it comes back at the next launch unless you host first.";
+
+    /// <summary>Which of the game's buttons continues the run now, said after Done or after a note.</summary>
+    public static string ContinuesIt(SaveKind kind) => kind == SaveKind.Solo
+        ? "Continue picks this run up."
+        : "Load continues this run.";
+
+    /// <summary>
+    /// The button that opens and closes a panel that starts closed (the solo one, on the main menu). Closed,
+    /// it says how many runs are parked, so there is a reason to open it.
+    /// </summary>
+    public static string Toggle(bool open, int parked) =>
+        open ? "Hide" : parked > 0 ? $"Show ({parked} parked)" : "Show";
 }

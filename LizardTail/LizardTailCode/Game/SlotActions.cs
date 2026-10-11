@@ -1,8 +1,6 @@
 using System.Text;
 using MegaCrit.Sts2.Core.Helpers;
-using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
-using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Platform.Steam;
 using MegaCrit.Sts2.Core.Runs;
@@ -12,10 +10,10 @@ using LizardTail.LizardTailCode.Core;
 namespace LizardTail.LizardTailCode.Game;
 
 /// <summary>
-/// Parking, activating and trashing runs. Parked files are never overwritten or deleted: each copy of a
-/// run gets its own file, making a run active leaves its parked copy in place, and Trash moves files
-/// to a trash folder. Copies of the active run are hidden from the list, and are moved to the trash
-/// only once the game has saved newer progress of that run, which proves the swap took.
+/// Parking, activating and trashing runs, solo or multiplayer. Parked files are never overwritten or
+/// deleted: each copy of a run gets its own file, making a run active leaves its parked copy in place,
+/// and Trash moves files to a trash folder. Copies of the active run are hidden from the list, and are
+/// moved to the trash only once the game has saved newer progress of that run, which proves the swap took.
 /// </summary>
 public static class SlotActions
 {
@@ -40,11 +38,11 @@ public static class SlotActions
     }
 
     /// <summary>
-    /// Null when a swap is safe now; otherwise why not. Swapping is only safe on the multiplayer menu
-    /// with nothing else going on: once Load is pressed the game holds the run in memory and writes
-    /// it back, which would overwrite a swap.
+    /// Null when a swap is safe now; otherwise why not. Swapping is only safe on the picker's own menu
+    /// with nothing else going on: once Load or Continue is pressed the game holds the run in memory
+    /// and writes it back, which would overwrite a swap.
     /// </summary>
-    public static string? WhyNotNow(NMultiplayerSubmenu? submenu)
+    public static string? WhyNotNow(IPickerHost? host)
     {
         if (Busy)
         {
@@ -66,33 +64,25 @@ public static class SlotActions
         {
             return "Close the open popup first.";
         }
-        if (submenu == null || NGame.Instance?.MainMenu?.SubmenuStack.Peek() != submenu)
-        {
-            return "Only available on the multiplayer menu.";
-        }
-        if (MultiplayerMenu.IsLoading(submenu))
-        {
-            return "Hosting has started.";
-        }
-        return null;
+        return host == null ? "The menu is gone." : host.WhyNotHere();
     }
 
     /// <summary>The "Park this run" button: parks the active run and frees the game's slot.</summary>
-    public static string ParkActiveRun()
+    public static string ParkActiveRun(SaveKind kind)
     {
-        var (text, run) = ReadParkable();
-        SlotStore.Park(text, run);
-        SlotStore.ParkBackup(text);
-        PlayerNames.Remember(run);
-        ClearActive();
-        ModLog.Info($"Parked multiplayer run {run.Key} ({run.Players.Count} players)");
+        var (text, run) = ReadParkable(kind);
+        SlotStore.Park(kind, text, run);
+        SlotStore.ParkBackup(kind, text);
+        Remember(kind, run);
+        ClearActive(kind);
+        ModLog.Info($"Parked {SaveKinds.Name(kind)} run {run.Key} ({run.Players.Count} players)");
 
-        if (CloudStillHasActive())
+        if (CloudStillHasActive(kind))
         {
             ModLog.Warn($"Parked run {run.Key}, but Steam Cloud kept it as the active save");
-            return "Parked, but Steam Cloud kept the old save, so it comes back at the next launch unless you host first.";
+            return SlotText.ParkedButCloudKept(kind);
         }
-        return "Parked. Host now starts a new run.";
+        return SlotText.Parked(kind);
     }
 
     /// <summary>
@@ -100,22 +90,36 @@ public static class SlotActions
     /// would be showing its older .backup, and clearing the slot would delete the newer progress) or a
     /// save that cannot be read at all.
     /// </summary>
-    private static (string Text, RunSummary Run) ReadParkable()
+    private static (string Text, RunSummary Run) ReadParkable(SaveKind kind)
     {
-        if (SlotStore.ActiveDamaged())
+        if (SlotStore.ActiveDamaged(kind))
         {
-            throw new InvalidOperationException("The game's save file is damaged, so it was left alone. Press Load once so the game repairs it or sets it aside, then try again.");
+            throw new InvalidOperationException($"The game's save file is damaged, so it was left alone. {SlotText.HowTheGameRepairs(kind)}, then try again.");
         }
-        var text = SlotStore.ReadActive()
-            ?? throw new InvalidOperationException("The game's multiplayer save cannot be read, so it was left alone. Press Load once so the game sets it aside.");
+        var text = SlotStore.ReadActive(kind)
+            ?? throw new InvalidOperationException(kind == SaveKind.Solo
+                ? "The game's solo save cannot be read, so it was left alone. The game sets it aside the next time it draws the main menu."
+                : "The game's multiplayer save cannot be read, so it was left alone. Press Load once so the game sets it aside.");
         return (text, RunSummary.TryParse(text)!);
     }
 
-    private static bool CloudStillHasActive()
+    /// <summary>
+    /// Looks up the Steam names of a multiplayer run's players while Steam is likely to know them. A
+    /// solo run has no one to name.
+    /// </summary>
+    private static void Remember(SaveKind kind, RunSummary run)
+    {
+        if (kind == SaveKind.Multiplayer)
+        {
+            PlayerNames.Remember(run);
+        }
+    }
+
+    private static bool CloudStillHasActive(SaveKind kind)
     {
         try
         {
-            return SlotStore.Cloud is { } cloud && cloud.FileExists(SlotStore.ActivePath);
+            return SlotStore.Cloud is { } cloud && cloud.FileExists(SlotStore.ActivePath(kind));
         }
         catch (Exception ex)
         {
@@ -124,15 +128,15 @@ public static class SlotActions
         }
     }
 
-    /// <summary>Clears the game's multiplayer slot (here and in Steam Cloud) after its run has been parked.</summary>
-    private static void ClearActive()
+    /// <summary>Clears the game's slot of this kind (here and in Steam Cloud) after its run has been parked.</summary>
+    private static void ClearActive(SaveKind kind)
     {
         Busy = true;
         try
         {
             using (SlotStore.Manager.BeginSaveBatch())
             {
-                SlotStore.Manager.DeleteCurrentMultiplayerRun();
+                SlotStore.DeleteActive(kind);
             }
         }
         finally
@@ -140,22 +144,23 @@ public static class SlotActions
             Busy = false;
         }
 
-        if (SlotStore.Manager.HasMultiplayerRunSave)
+        if (SlotStore.HasActive(kind))
         {
-            throw new InvalidOperationException("The game's multiplayer save could not be cleared. The run is also parked.");
+            throw new InvalidOperationException($"The game's {SaveKinds.Name(kind)} save could not be cleared. The run is also parked.");
         }
     }
 
     /// <summary>
-    /// Makes a parked run the game's multiplayer save. Everything that could refuse is checked before
-    /// anything changes: you are in the run, the game can load it with the installed version and mods,
-    /// it has not been won or lost here or in Steam Cloud, and the active run can be parked. Then, in
-    /// order: the active run is parked (only adds a file), an abandon record is moved aside, the slot is
-    /// cleared, and the run is written through the game's store and read back. If a step after the
-    /// record moved fails, the record is put back. The parked copy stays where it is.
+    /// Makes a parked run the game's save of its kind. Everything that could refuse is checked before
+    /// anything changes: you are in the run (multiplayer only), the game can load it with the installed
+    /// version and mods, it has not been won or lost here or in Steam Cloud, and the active run can be
+    /// parked. Then, in order: the active run is parked (only adds a file), an abandon record is moved
+    /// aside, the slot is cleared, and the run is written through the game's store and read back. If a
+    /// step after the record moved fails, the record is put back. The parked copy stays where it is.
     /// </summary>
     public static string Activate(Slot slot)
     {
+        var kind = slot.Kind;
         if (!SlotRules.CanActivate(slot.State) || slot.Summary == null)
         {
             throw new InvalidOperationException(SlotText.StateNote(slot.State) ?? "This run cannot be made active.");
@@ -168,16 +173,20 @@ public static class SlotActions
             throw new InvalidOperationException("The parked file changed since the list was drawn. Nothing was changed.");
         }
 
-        var host = LocalPlayerId;
-        if (host == 0)
+        // Continue never asks who is in a solo save, so neither does this.
+        var host = SaveKinds.NeedsYouInIt(kind) ? LocalPlayerId : 0;
+        if (SaveKinds.NeedsYouInIt(kind))
         {
-            throw new InvalidOperationException("Steam is not ready yet, so the game could not host this run. Nothing was changed.");
+            if (host == 0)
+            {
+                throw new InvalidOperationException("Steam is not ready yet, so the game could not host this run. Nothing was changed.");
+            }
+            if (!run.HasPlayer(host))
+            {
+                throw new InvalidOperationException(SlotText.StateNote(SlotState.NotYourRun));
+            }
         }
-        if (!run.HasPlayer(host))
-        {
-            throw new InvalidOperationException(SlotText.StateNote(SlotState.NotYourRun));
-        }
-        SaveCheck.Verify(text, host);
+        SaveCheck.Verify(kind, text, host);
 
         var ending = SlotStore.EndingAnywhere(run.StartTime);
         if (ending == RunEnding.Finished)
@@ -185,45 +194,45 @@ public static class SlotActions
             throw new InvalidOperationException(SlotText.StateNote(SlotState.Finished));
         }
 
-        (string Text, RunSummary Run)? active = SlotStore.Manager.HasMultiplayerRunSave ? ReadParkable() : null;
+        (string Text, RunSummary Run)? active = SlotStore.HasActive(kind) ? ReadParkable(kind) : null;
         if (active is { } same && same.Run.StartTime == run.StartTime && ending == RunEnding.None
             && same.Run.SchemaVersion <= SlotStore.Manager.GetLatestSchemaVersion<SerializableRun>()
-            && SlotStore.AgreedActive(same.Run, out _) is { } agreed && agreed.SaveTime >= run.SaveTime)
+            && SlotStore.AgreedActive(kind, same.Run, out _) is { } agreed && agreed.SaveTime >= run.SaveTime)
         {
-            return "This run is already active. Load continues it.";
+            return $"This run is already active. {SlotText.ContinuesIt(kind)}";
         }
 
         // Every check has passed. Additive steps first, then the ones that change the game's files.
         if (active is { } current)
         {
-            SlotStore.Park(current.Text, current.Run);
-            SlotStore.ParkBackup(current.Text);
-            PlayerNames.Remember(current.Run);
+            SlotStore.Park(kind, current.Text, current.Run);
+            SlotStore.ParkBackup(kind, current.Text);
+            Remember(kind, current.Run);
         }
-        var record = ending == RunEnding.Abandoned ? ReviveHistory(run.StartTime) : null;
+        var record = ending == RunEnding.Abandoned ? ReviveHistory(kind, run.StartTime) : null;
 
-        var path = SlotStore.ActivePath;
+        var path = SlotStore.ActivePath(kind);
         try
         {
             if (active != null)
             {
-                ClearActive();
+                ClearActive(kind);
             }
             SlotStore.Local.CreateDirectory(path[..path.LastIndexOf('/')]);
             using (SlotStore.Manager.BeginSaveBatch())
             {
                 SlotStore.Store.WriteFile(path, Encoding.UTF8.GetBytes(text));
             }
-            if (!SameCopy(RunSummary.TryParse(SlotStore.ReadActive()), run))
+            if (!SameCopy(RunSummary.TryParse(SlotStore.ReadActive(kind)), run))
             {
-                throw new InvalidOperationException("The run did not read back from the game's multiplayer slot. It is still parked.");
+                throw new InvalidOperationException($"The run did not read back from the game's {SaveKinds.Name(kind)} slot. It is still parked.");
             }
         }
         catch
         {
             if (record != null)
             {
-                RestoreHistory(run.StartTime, record);
+                RestoreHistory(kind, run.StartTime, record);
             }
             throw;
         }
@@ -238,7 +247,7 @@ public static class SlotActions
             catch (Exception ex)
             {
                 ModLog.Warn($"Activated run {run.Key}, but could not read it back from Steam Cloud: {ex.Message}");
-                return "Done, but Steam Cloud could not be checked just now. Load continues this run.";
+                return $"Done, but Steam Cloud could not be checked just now. {SlotText.ContinuesIt(kind)}";
             }
             if (!SameCopy(inCloud, run))
             {
@@ -247,8 +256,8 @@ public static class SlotActions
             }
         }
 
-        ModLog.Info($"Activated multiplayer run {run.Key}");
-        return "Done. Load continues this run.";
+        ModLog.Info($"Activated {SaveKinds.Name(kind)} run {run.Key}");
+        return $"Done. {SlotText.ContinuesIt(kind)}";
     }
 
     /// <summary>Moves every copy of a parked run to the trash folder.</summary>
@@ -289,7 +298,7 @@ public static class SlotActions
     /// the run again at the next launch, so the record is put back and the swap is refused. Returns the
     /// record, so a later failure can put it back; null when there was none.
     /// </summary>
-    private static string? ReviveHistory(long startTime)
+    private static string? ReviveHistory(SaveKind kind, long startTime)
     {
         var path = SlotStore.HistoryPath(startTime);
         var cloud = SlotStore.Cloud;
@@ -305,7 +314,7 @@ public static class SlotActions
             throw new InvalidOperationException(SlotText.StateNote(SlotState.Finished));
         }
 
-        SlotStore.WriteLocal(SlotStore.FreePath(SlotStore.RevivedHistoryDir, startTime.ToString(System.Globalization.CultureInfo.InvariantCulture), ".run"), record);
+        SlotStore.WriteLocal(SlotStore.FreePath(SlotStore.RevivedHistoryDir(kind), startTime.ToString(System.Globalization.CultureInfo.InvariantCulture), ".run"), record);
         bool removed;
         try
         {
@@ -327,7 +336,7 @@ public static class SlotActions
 
         if (!removed)
         {
-            RestoreHistory(startTime, record);
+            RestoreHistory(kind, startTime, record);
             throw new InvalidOperationException("The abandon record could not be removed here and from Steam Cloud, so the game would delete this run again. Nothing was changed.");
         }
         ModLog.Info($"Moved the abandon record of run {startTime} aside so it can continue");
@@ -335,7 +344,7 @@ public static class SlotActions
     }
 
     /// <summary>Puts an abandon record back where the game keeps it, after a swap that did not complete.</summary>
-    private static void RestoreHistory(long startTime, string record)
+    private static void RestoreHistory(SaveKind kind, long startTime, string record)
     {
         var path = SlotStore.HistoryPath(startTime);
         try
@@ -349,16 +358,16 @@ public static class SlotActions
         }
         catch (Exception ex)
         {
-            ModLog.Error($"Could not put the abandon record of run {startTime} back; a copy is in {SlotStore.RevivedHistoryDir}: {ex}");
+            ModLog.Error($"Could not put the abandon record of run {startTime} back; a copy is in {SlotStore.RevivedHistoryDir(kind)}: {ex}");
         }
     }
 
     /// <summary>
-    /// Called just before the game deletes the active multiplayer save for its own reasons (Abandon,
+    /// Called just before the game deletes the active save of this kind for its own reasons (Abandon,
     /// or a run ending). Keeps a parked copy unless the run was won or lost, so an abandon can be
     /// undone from the picker. A damaged primary file is kept too, beside its readable backup.
     /// </summary>
-    public static void SnapshotBeforeGameDeletes()
+    public static void SnapshotBeforeGameDeletes(SaveKind kind)
     {
         if (Busy || !SlotStore.Manager.IsProfileInitialized)
         {
@@ -367,7 +376,7 @@ public static class SlotActions
 
         try
         {
-            var path = SlotStore.ActivePath;
+            var path = SlotStore.ActivePath(kind);
             foreach (var candidate in new[] { path, path + ".backup" })
             {
                 var text = SlotStore.Store.FileExists(candidate) ? SlotStore.Store.ReadFile(candidate) : null;
@@ -381,11 +390,11 @@ public static class SlotActions
                     return; // won or lost: nothing to pick up again
                 }
 
-                SlotStore.ParkAnything(text, "damaged");
+                SlotStore.ParkAnything(kind, text, "damaged");
                 if (run != null)
                 {
-                    PlayerNames.Remember(run);
-                    ModLog.Info($"Kept a copy of multiplayer run {run.Key} before the game removed it");
+                    Remember(kind, run);
+                    ModLog.Info($"Kept a copy of {SaveKinds.Name(kind)} run {run.Key} before the game removed it");
                     return; // a readable save is enough; its .backup is older
                 }
                 ModLog.Info($"Kept a copy of the damaged {candidate} before the game removed it");
@@ -393,16 +402,17 @@ public static class SlotActions
         }
         catch (Exception ex)
         {
-            ModLog.Warn($"Could not keep a copy of the multiplayer run before it was removed: {ex.Message}");
+            ModLog.Warn($"Could not keep a copy of the {SaveKinds.Name(kind)} run before it was removed: {ex.Message}");
         }
     }
 
     /// <summary>
-    /// Called just before the game renames a multiplayer save it cannot load to *.corrupt (on Load or
-    /// Abandon). Keeps a parked copy, so the run is listed (as unreadable or from a newer version)
-    /// instead of only sitting in the saves folder. <paramref name="path"/> limits it to one file.
+    /// Called just before the game renames a save of this kind it cannot load to *.corrupt (multiplayer:
+    /// on Load or Abandon; solo: whenever the main menu draws its buttons). Keeps a parked copy, so the
+    /// run is listed (as unreadable or from a newer version) instead of only sitting in the saves folder.
+    /// <paramref name="path"/> limits it to one file.
     /// </summary>
-    public static void SnapshotBeforeGameSetsAside(string? path = null)
+    public static void SnapshotBeforeGameSetsAside(SaveKind kind, string? path = null)
     {
         if (Busy || !SlotStore.Manager.IsProfileInitialized)
         {
@@ -411,23 +421,23 @@ public static class SlotActions
 
         try
         {
-            var active = SlotStore.ActivePath;
+            var active = SlotStore.ActivePath(kind);
             var ours = new[] { active, active + ".backup" };
             foreach (var candidate in path == null ? ours : ours.Where(p => SamePath(p, path)))
             {
                 // The game shows an error popup but does not redraw the menu, whatever the file held.
-                SlotPicker.RequestRefresh();
+                SlotPicker.RequestRefresh(kind);
                 var text = SlotStore.Store.FileExists(candidate) ? SlotStore.Store.ReadFile(candidate) : null;
                 if (!string.IsNullOrWhiteSpace(text))
                 {
-                    SlotStore.ParkAnything(text, "set-aside");
+                    SlotStore.ParkAnything(kind, text, "set-aside");
                     ModLog.Info($"Kept a copy of {candidate} before the game set it aside as unloadable");
                 }
             }
         }
         catch (Exception ex)
         {
-            ModLog.Warn($"Could not keep a copy of the multiplayer save the game set aside: {ex.Message}");
+            ModLog.Warn($"Could not keep a copy of the {SaveKinds.Name(kind)} save the game set aside: {ex.Message}");
         }
     }
 
