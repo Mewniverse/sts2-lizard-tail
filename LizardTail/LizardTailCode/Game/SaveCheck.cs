@@ -7,8 +7,10 @@ using LizardTail.LizardTailCode.Core;
 namespace LizardTail.LizardTailCode.Game;
 
 /// <summary>
-/// Loads a parked run the way the multiplayer menu's Load does (migrate, deserialize, then check it
-/// against the installed game and mods), without touching any file. Run before a swap changes
+/// Loads a parked run the way the game's own button does, without touching any file. Multiplayer, as
+/// the multiplayer menu's Load: migrate, deserialize, then check it against the installed game and mods
+/// for the hosting player. Solo, as the main menu's Continue: migrate, deserialize, then build the run
+/// from it, which is where a save with content this game lacks fails. Run before a swap changes
 /// anything, so a run the game would refuse is never made active.
 /// </summary>
 public static class SaveCheck
@@ -18,8 +20,11 @@ public static class SaveCheck
     private static readonly ProbeStore Probe = new();
     private static MigrationManager? _migrations;
 
-    /// <summary>Throws with the reason when the game could not load <paramref name="text"/> for <paramref name="hostId"/>.</summary>
-    public static void Verify(string text, ulong hostId)
+    /// <summary>
+    /// Throws with the reason when the game could not load <paramref name="text"/>. <paramref name="hostId"/>
+    /// is the player who would host a multiplayer run; a solo run is not checked against anyone.
+    /// </summary>
+    public static void Verify(SaveKind kind, string text, ulong hostId)
     {
         _migrations ??= new MigrationManager(Probe);
         Probe.Reset(ProbePath, text);
@@ -36,7 +41,14 @@ public static class SaveCheck
 
         try
         {
-            RunManager.CanonicalizeSave(read.SaveData, hostId);
+            if (kind == SaveKind.Solo)
+            {
+                RunState.FromSerializable(read.SaveData);
+            }
+            else
+            {
+                RunManager.CanonicalizeSave(read.SaveData, hostId);
+            }
         }
         catch (Exception ex)
         {

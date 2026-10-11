@@ -8,14 +8,15 @@ using LizardTail.LizardTailCode.Core;
 
 namespace LizardTail.LizardTailCode.Game;
 
-/// <summary>A parked run: one file in the mod's slot folder.</summary>
-public sealed record Slot(string FileName, string Path, RunSummary? Summary, SlotState State);
+/// <summary>A parked run: one file in the mod's slot folder for its kind (solo or multiplayer).</summary>
+public sealed record Slot(SaveKind Kind, string FileName, string Path, RunSummary? Summary, SlotState State);
 
 /// <summary>
 /// Where things live, and reading and writing them through the game's own save stores.
 ///
-/// The active multiplayer save is changed only through the game's store, which is cloud-aware: a
-/// plain file swap would be undone at the next launch, when the game syncs the cloud copy back.
+/// The active save (solo or multiplayer, see <see cref="SaveKind"/>) is changed only through the game's
+/// store, which is cloud-aware: a plain file swap would be undone at the next launch, when the game
+/// syncs the cloud copy back.
 /// Parked runs live in mod_data, which the game never syncs or cleans, through the local store.
 /// Parked files are only ever added or moved to the trash folder, never overwritten or deleted.
 /// </summary>
@@ -46,7 +47,24 @@ public static class SlotStore
     public static int ProfileId => Manager.CurrentProfileId;
 
     /// <summary>Recomputed every time: it changes with the profile and with modded/unmodded paths.</summary>
-    public static string ActivePath => RunSaveManager.GetRunSavePath(ProfileId, RunSaveManager.multiplayerRunSaveFileName);
+    public static string ActivePath(SaveKind kind) =>
+        RunSaveManager.GetRunSavePath(ProfileId, kind == SaveKind.Solo ? RunSaveManager.runSaveFileName : RunSaveManager.multiplayerRunSaveFileName);
+
+    /// <summary>True when the game has a save of this kind, or its .backup, as its own menus check.</summary>
+    public static bool HasActive(SaveKind kind) => kind == SaveKind.Solo ? Manager.HasRunSave : Manager.HasMultiplayerRunSave;
+
+    /// <summary>Has the game delete its save of this kind and the .backup, here and in Steam Cloud.</summary>
+    public static void DeleteActive(SaveKind kind)
+    {
+        if (kind == SaveKind.Solo)
+        {
+            Manager.DeleteCurrentRun();
+        }
+        else
+        {
+            Manager.DeleteCurrentMultiplayerRun();
+        }
+    }
 
     /// <summary>The mod's folder in mod_data, moved over from its old name the first time it is needed.</summary>
     private static string Root
@@ -98,25 +116,26 @@ public static class SlotStore
     /// </summary>
     public static string ProfileFolder => $"{Root}/{UserDataPathProvider.GetProfileDir(ProfileId)}";
 
-    public static string SlotDir => $"{ProfileFolder}/slots";
+    /// <summary>This profile's folder for one kind of run (see <see cref="SaveKinds.Folder"/>).</summary>
+    public static string Folder(SaveKind kind) => SaveKinds.Folder(kind, ProfileFolder);
+
+    public static string SlotDir(SaveKind kind) => $"{Folder(kind)}/slots";
 
     /// <summary>
     /// The slot folder of the other kind of profile (modded or normal). Runs parked there are listed too,
     /// so switching between shared and separate saves never hides a parked run.
     /// </summary>
-    private static string OtherSlotDir
+    private static string OtherSlotDir(SaveKind kind)
     {
-        get
-        {
-            var modded = UserDataPathProvider.GetAccountDir().Length > 0;
-            return $"{Root}/{UserDataPathProvider.GetProfileDir(ProfileId, !modded)}/slots";
-        }
+        var modded = UserDataPathProvider.GetAccountDir().Length > 0;
+        var otherProfile = $"{Root}/{UserDataPathProvider.GetProfileDir(ProfileId, !modded)}";
+        return $"{SaveKinds.Folder(kind, otherProfile)}/slots";
     }
 
-    public static string TrashDir => $"{ProfileFolder}/trash";
+    public static string TrashDir(SaveKind kind) => $"{Folder(kind)}/trash";
 
     /// <summary>Abandon records moved aside when an abandoned run is picked up again.</summary>
-    public static string RevivedHistoryDir => $"{ProfileFolder}/revived-history";
+    public static string RevivedHistoryDir(SaveKind kind) => $"{Folder(kind)}/revived-history";
 
     public static string NamesPath => $"{Root}/names.json";
 
@@ -124,9 +143,9 @@ public static class SlotStore
         System.IO.Path.Combine(RunHistorySaveManager.GetHistoryPath(ProfileId), $"{startTime.ToString(CultureInfo.InvariantCulture)}.run");
 
     /// <summary>The active run's text: the primary file, or its .backup as the game itself falls back to.</summary>
-    public static string? ReadActive()
+    public static string? ReadActive(SaveKind kind)
     {
-        var path = ActivePath;
+        var path = ActivePath(kind);
         foreach (var candidate in new[] { path, path + ".backup" })
         {
             if (Store.FileExists(candidate) && Store.ReadFile(candidate) is { } text && RunSummary.TryParse(text) != null)
@@ -141,9 +160,9 @@ public static class SlotStore
     /// True when the game's primary save file exists but cannot be read, so <see cref="ReadActive"/> is
     /// showing the older .backup. Clearing the slot then would delete progress the mod never copied.
     /// </summary>
-    public static bool ActiveDamaged()
+    public static bool ActiveDamaged(SaveKind kind)
     {
-        var path = ActivePath;
+        var path = ActivePath(kind);
         return Store.FileExists(path) && RunSummary.TryParse(Store.ReadFile(path)) == null;
     }
 
@@ -151,9 +170,9 @@ public static class SlotStore
     /// The active run as Steam Cloud holds it; null when cloud sync is off or the cloud has none. Steam
     /// reads can throw at any time (the game wraps every one), so callers must catch.
     /// </summary>
-    public static RunSummary? ReadCloudActive()
+    public static RunSummary? ReadCloudActive(SaveKind kind)
     {
-        var path = ActivePath;
+        var path = ActivePath(kind);
         return Cloud is { } cloud && cloud.FileExists(path) ? RunSummary.TryParse(cloud.ReadFile(path)) : null;
     }
 
@@ -163,16 +182,16 @@ public static class SlotStore
     /// launch whatever the cloud holds, so it counts as agreed. When the cloud cannot be read the answer
     /// is null, which hides and clears nothing, and <paramref name="cloudUnknown"/> says why.
     /// </summary>
-    public static RunSummary? AgreedActive(RunSummary? local, out bool cloudUnknown)
+    public static RunSummary? AgreedActive(SaveKind kind, RunSummary? local, out bool cloudUnknown)
     {
         cloudUnknown = false;
-        if (local == null || Cloud == null || !Store.FileExists(ActivePath))
+        if (local == null || Cloud == null || !Store.FileExists(ActivePath(kind)))
         {
             return local;
         }
         try
         {
-            return SlotRules.Agreed(local, ReadCloudActive(), cloudSync: true);
+            return SlotRules.Agreed(local, ReadCloudActive(kind), cloudSync: true);
         }
         catch (Exception ex)
         {
@@ -187,13 +206,13 @@ public static class SlotStore
     /// loads the .backup when it cannot load the primary (one from a newer version, say), so clearing the
     /// slot must not delete it uncopied.
     /// </summary>
-    public static void ParkBackup(string primaryText)
+    public static void ParkBackup(SaveKind kind, string primaryText)
     {
-        var path = ActivePath + ".backup";
+        var path = ActivePath(kind) + ".backup";
         var text = Store.FileExists(path) ? Store.ReadFile(path) : null;
         if (text != null && text != primaryText && RunSummary.TryParse(text) is { } run)
         {
-            Park(text, run);
+            Park(kind, text, run);
         }
     }
 
@@ -233,24 +252,26 @@ public static class SlotStore
 
     /// <summary>
     /// Every parked file, readable or not, in no particular order: this profile's slot folder, then the
-    /// other kind of profile's (see <see cref="OtherSlotDir"/>).
+    /// other kind of profile's (see <see cref="OtherSlotDir"/>). Solo runs are never marked as not yours:
+    /// the id is left out, as it is while Steam does not know it yet.
     /// </summary>
-    public static IReadOnlyList<Slot> AllSlots(ulong localPlayerId)
+    public static IReadOnlyList<Slot> AllSlots(SaveKind kind, ulong localPlayerId)
     {
+        var mustBeIn = SaveKinds.NeedsYouInIt(kind) ? localPlayerId : 0;
         var latest = Manager.GetLatestSchemaVersion<SerializableRun>();
         var endings = new Dictionary<long, RunEnding>();
         var slots = new List<Slot>();
-        foreach (var dir in new[] { SlotDir, OtherSlotDir }.Distinct())
+        foreach (var dir in new[] { SlotDir(kind), OtherSlotDir(kind) }.Distinct())
         {
             if (Local.DirectoryExists(dir))
             {
-                ReadSlots(dir, localPlayerId, latest, endings, slots);
+                ReadSlots(kind, dir, mustBeIn, latest, endings, slots);
             }
         }
         return slots;
     }
 
-    private static void ReadSlots(string dir, ulong localPlayerId, int latest, Dictionary<long, RunEnding> endings, List<Slot> slots)
+    private static void ReadSlots(SaveKind kind, string dir, ulong localPlayerId, int latest, Dictionary<long, RunEnding> endings, List<Slot> slots)
     {
         foreach (var file in Local.GetFilesInDirectory(dir))
         {
@@ -268,13 +289,13 @@ public static class SlotStore
                 {
                     ending = endings[summary.StartTime] = EndingOf(summary.StartTime);
                 }
-                slots.Add(new Slot(file, path, summary, SlotRules.StateOf(summary, localPlayerId, ending, latest)));
+                slots.Add(new Slot(kind, file, path, summary, SlotRules.StateOf(summary, localPlayerId, ending, latest)));
             }
             catch (Exception ex)
             {
                 // One bad file must not hide the others; it is listed as unreadable so it can be trashed.
                 ModLog.Warn($"Could not read parked run {file}: {ex.Message}");
-                slots.Add(new Slot(file, path, null, SlotState.Unreadable));
+                slots.Add(new Slot(kind, file, path, null, SlotState.Unreadable));
             }
         }
     }
@@ -289,11 +310,11 @@ public static class SlotStore
     /// Parks a copy of a run under a name no other copy uses, and checks it reads back. An identical
     /// copy already parked is reused instead of written twice.
     /// </summary>
-    public static string Park(string text, RunSummary run)
+    public static string Park(SaveKind kind, string text, RunSummary run)
     {
         for (var attempt = 0; attempt < 100; attempt++)
         {
-            var path = $"{SlotDir}/{SlotRules.FileName(run, attempt)}";
+            var path = $"{SlotDir(kind)}/{SlotRules.FileName(run, attempt)}";
             if (Local.FileExists(path))
             {
                 if (Local.ReadFile(path) == text)
@@ -318,14 +339,14 @@ public static class SlotStore
     /// Parks a save the mod cannot read as a run (damaged, or about to be set aside by the game), so it
     /// is kept and listed as unreadable rather than lost. Readable runs go through <see cref="Park"/>.
     /// </summary>
-    public static void ParkAnything(string text, string why)
+    public static void ParkAnything(SaveKind kind, string text, string why)
     {
         if (RunSummary.TryParse(text) is { } run)
         {
-            Park(text, run);
+            Park(kind, text, run);
             return;
         }
-        WriteLocal(FreePath(SlotDir, why, ".save"), text);
+        WriteLocal(FreePath(SlotDir(kind), why, ".save"), text);
     }
 
     public static void WriteLocal(string path, string text)
@@ -351,8 +372,9 @@ public static class SlotStore
     /// <summary>Moves one parked file, and its .backup, into the trash folder. Nothing is deleted.</summary>
     public static void MoveToTrash(Slot slot)
     {
-        Local.CreateDirectory(TrashDir);
-        var target = FreePath(TrashDir, System.IO.Path.GetFileNameWithoutExtension(slot.FileName), ".save");
+        var trash = TrashDir(slot.Kind);
+        Local.CreateDirectory(trash);
+        var target = FreePath(trash, System.IO.Path.GetFileNameWithoutExtension(slot.FileName), ".save");
         Local.RenameFile(slot.Path, target);
         if (Local.FileExists(slot.Path + ".backup"))
         {

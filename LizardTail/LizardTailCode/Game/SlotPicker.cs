@@ -6,9 +6,11 @@ using LizardTail.LizardTailCode.Core;
 namespace LizardTail.LizardTailCode.Game;
 
 /// <summary>
-/// The panel on the multiplayer menu listing the active multiplayer run and every parked one.
-/// The game's Load button always continues the active run; this panel decides which run that is.
-/// It sits at the right edge, and the game's tiles move left (and shrink on narrow screens) to make room.
+/// The panel listing the active run and every parked one: multiplayer runs on the multiplayer menu,
+/// solo runs on the main menu (see <see cref="IPickerHost"/>).
+/// The game's Load or Continue button always continues the active run; this panel decides which run that is.
+/// It sits at the right edge. On the multiplayer menu the game's tiles move left (and shrink on narrow
+/// screens) to make room; on the main menu it starts closed, as its title and a Show button.
 /// </summary>
 public partial class SlotPicker : PanelContainer
 {
@@ -23,48 +25,47 @@ public partial class SlotPicker : PanelContainer
     private static readonly Color Warn = new("e0a070");
     private static readonly Color Good = new("8fd18f");
 
-    private NMultiplayerSubmenu _submenu = null!;
+    private IPickerHost _host = null!;
+    private VBoxContainer _body = null!;
+    private SlotButton? _toggle;
+    private bool _open = true;
+    private int _parked;
     private VBoxContainer _list = null!;
     private Label _status = null!;
     private double _sinceCheck;
     private string? _blocked = "";
     private readonly List<SlotButton> _actions = new();
     private readonly List<List<SlotButton>> _rows = new();
-    private NodePath? _joinRightAsScene;
+    private readonly Dictionary<Control, NodePath> _entryRightAsScene = new();
     private Vector2? _tilesHomeOffset;
-    private static bool _loggedFolder;
+    private static readonly HashSet<SaveKind> LoggedFolder = new();
     private bool _acting;
-    private static bool _refreshRequested;
+    private static readonly HashSet<SaveKind> RefreshRequested = new();
 
-    public static SlotPicker? Of(NMultiplayerSubmenu submenu) => submenu.GetNodeOrNull<SlotPicker>(NodeName);
+    public static SlotPicker? Of(Node menu) => menu.GetNodeOrNull<SlotPicker>(NodeName);
 
-    public static void AttachTo(NMultiplayerSubmenu submenu)
+    public static void AttachTo(IPickerHost host)
     {
-        if (Of(submenu) != null)
+        if (Of(host.Menu) != null)
         {
             return;
         }
 
         var picker = new SlotPicker { Name = NodeName };
-        picker.Build(submenu);
-        submenu.AddChild(picker);
-        // Under the game's loading overlay, so it is covered while a lobby starts.
-        if (MultiplayerMenu.Overlay(submenu) is { } overlay && overlay.GetParent() == submenu)
-        {
-            submenu.MoveChild(picker, overlay.GetIndex());
-        }
+        picker.Build(host);
+        host.Add(picker);
         picker.Refresh();
 
-        if (!_loggedFolder && SlotStore.Manager.IsProfileInitialized)
+        if (SlotStore.Manager.IsProfileInitialized && LoggedFolder.Add(host.Kind))
         {
-            _loggedFolder = true;
-            ModLog.Info($"Parked runs for this profile are in {SlotStore.Local.GetFullPath(SlotStore.SlotDir)} ({(SharedSaves.UsingNormalSaves ? "normal saves" : "separate modded saves")})");
+            ModLog.Info($"Parked {SaveKinds.Name(host.Kind)} runs for this profile are in {SlotStore.Local.GetFullPath(SlotStore.SlotDir(host.Kind))} ({(SharedSaves.UsingNormalSaves ? "normal saves" : "separate modded saves")})");
         }
     }
 
-    private void Build(NMultiplayerSubmenu submenu)
+    private void Build(IPickerHost host)
     {
-        _submenu = submenu;
+        _host = host;
+        _open = !host.StartsClosed;
         MouseFilter = MouseFilterEnum.Stop;
 
         AnchorLeft = 1;
@@ -89,8 +90,25 @@ public partial class SlotPicker : PanelContainer
         column.AddThemeConstantOverride("separation", 10);
         AddChild(column);
 
-        column.AddChild(MakeLabel("Multiplayer runs", 26, Gold));
-        column.AddChild(MakeLabel("Load continues the active run. Park it to host a new one; make any parked run active to continue it.", 15, Muted));
+        column.AddChild(MakeLabel(SlotText.Title(host.Kind), 26, Gold));
+        if (host.StartsClosed)
+        {
+            _toggle = new SlotButton { Key = "toggle", FocusMode = FocusModeEnum.All, SizeFlagsHorizontal = SizeFlags.ShrinkBegin };
+            _toggle.AddThemeFontSizeOverride("font_size", 17);
+            _toggle.Pressed += () =>
+            {
+                _open = !_open;
+                ShowOpenOrClosed();
+                Refresh(); // the controller's paths differ between the two
+            };
+            column.AddChild(_toggle);
+        }
+
+        // Everything below the title, which a closed panel hides.
+        _body = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore, SizeFlagsVertical = SizeFlags.ExpandFill };
+        _body.AddThemeConstantOverride("separation", 10);
+        column.AddChild(_body);
+        _body.AddChild(MakeLabel(SlotText.Hint(host.Kind), 15, Muted));
 
         var scroll = new ScrollContainer
         {
@@ -98,14 +116,29 @@ public partial class SlotPicker : PanelContainer
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
             FollowFocus = true, // a controller moving down the list scrolls it
         };
-        column.AddChild(scroll);
+        _body.AddChild(scroll);
         _list = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _list.AddThemeConstantOverride("separation", 14);
         scroll.AddChild(_list);
 
         _status = MakeLabel("", 15, Muted);
-        column.AddChild(_status);
-        column.AddChild(MakeLabel("Parked runs are kept on this PC only.", 13, Muted));
+        _body.AddChild(_status);
+        _body.AddChild(MakeLabel("Parked runs are kept on this PC only.", 13, Muted));
+        ShowOpenOrClosed();
+    }
+
+    /// <summary>
+    /// Open, the panel is its full height. Closed, it is as tall as its title and the Show button: the
+    /// bottom edge is brought up to the top one, and a container never shrinks below its contents.
+    /// </summary>
+    private void ShowOpenOrClosed()
+    {
+        _body.Visible = _open;
+        OffsetBottom = _open ? 330 : OffsetTop;
+        if (_toggle != null)
+        {
+            _toggle.Text = SlotText.Toggle(_open, _parked);
+        }
     }
 
     /// <summary>
@@ -119,7 +152,7 @@ public partial class SlotPicker : PanelContainer
             return;
         }
         var owner = IsInsideTree() ? GetViewport()?.GuiGetFocusOwner() : null;
-        Rebuild(KeyOf(owner) ?? KeyOf(MultiplayerMenu.LastFocused(_submenu)), owner is SlotButton);
+        Rebuild(KeyOf(owner) ?? KeyOf(_host.LastFocused), owner is SlotButton);
     }
 
     private void Rebuild(string? focusKey, bool hadFocus)
@@ -136,17 +169,18 @@ public partial class SlotPicker : PanelContainer
         }
         _actions.Clear();
         _rows.Clear();
+        _parked = 0;
 
         try
         {
             var me = SlotActions.LocalPlayerId;
             var ready = SlotStore.Manager.IsProfileInitialized;
-            var active = ready ? RunSummary.TryParse(SlotStore.ReadActive()) : null;
+            var active = ready ? RunSummary.TryParse(SlotStore.ReadActive(_host.Kind)) : null;
             // Copies are hidden and cleared only against a save Steam Cloud also holds: one the cloud
             // lacks is undone at the next launch, and its parked copy must stay reachable.
             var cloudUnknown = false;
-            var agreed = ready ? SlotStore.AgreedActive(active, out cloudUnknown) : null;
-            var all = ready ? SlotStore.AllSlots(me) : Array.Empty<Slot>();
+            var agreed = ready ? SlotStore.AgreedActive(_host.Kind, active, out cloudUnknown) : null;
+            var all = ready ? SlotStore.AllSlots(_host.Kind, me) : Array.Empty<Slot>();
             // A save from a newer game version proves nothing about what this one can load, so older
             // copies of that run stay listed (one can be made active to go back) and are not cleared.
             var latest = ready ? SlotStore.Manager.GetLatestSchemaVersion<MegaCrit.Sts2.Core.Saves.SerializableRun>() : 0;
@@ -154,10 +188,10 @@ public partial class SlotPicker : PanelContainer
             if (SlotRules.Superseded(all, s => s.Summary, proof).Count > 0)
             {
                 SlotActions.TrashSuperseded(all, proof);
-                all = SlotStore.AllSlots(me);
+                all = SlotStore.AllSlots(_host.Kind, me);
             }
             var note = active == null ? null
-                : SlotStore.ActiveDamaged() ? SlotText.Damaged
+                : SlotStore.ActiveDamaged(_host.Kind) ? SlotText.Damaged(_host.Kind)
                 : cloudUnknown ? SlotText.CloudUnknown
                 : agreed == null ? SlotText.NotInCloud
                 : null;
@@ -166,8 +200,18 @@ public partial class SlotPicker : PanelContainer
         }
         catch (Exception ex)
         {
-            ModLog.Error($"Could not list multiplayer runs: {ex}");
+            ModLog.Error($"Could not list {SaveKinds.Name(_host.Kind)} runs: {ex}");
             _list.AddChild(MakeLabel($"Could not list runs: {ex.Message}", 16, Warn));
+        }
+
+        if (_toggle != null)
+        {
+            if (!_open)
+            {
+                _rows.Clear(); // the list is hidden, so a controller must not be sent into it
+            }
+            _rows.Insert(0, [_toggle]);
+            _toggle.Text = SlotText.Toggle(_open, _parked);
         }
 
         WireFocus();
@@ -176,19 +220,20 @@ public partial class SlotPicker : PanelContainer
 
         // Point the game's memory of focus, and focus itself, at the rebuilt button. A tile that Park or
         // Make active just hid (Load, Host) is forgotten too, so the game falls back to a visible one.
-        var replacement = _actions.FirstOrDefault(b => b.Key == focusKey) ?? _actions.FirstOrDefault(b => !b.Disabled);
-        ref var last = ref MultiplayerMenu.LastFocused(_submenu);
+        var reachable = _rows.SelectMany(row => row).ToList();
+        var replacement = reachable.FirstOrDefault(b => b.Key == focusKey) ?? reachable.FirstOrDefault(b => !b.Disabled);
+        var last = _host.LastFocused;
         if (last is SlotButton || (last != null && !IsInstanceValid(last)))
         {
-            last = replacement;
+            _host.LastFocused = replacement;
         }
         else if (last != null && !last.Visible)
         {
-            last = null;
+            _host.LastFocused = null;
         }
         if (hadFocus && NControllerManager.Instance?.IsUsingDirectionalNavigation == true)
         {
-            var target = (Control?)replacement ?? _submenu.DefaultFocusedControl;
+            var target = (Control?)replacement ?? _host.DefaultFocus;
             Callable.From(() =>
             {
                 if (target != null && IsInstanceValid(target) && target.IsVisibleInTree())
@@ -207,20 +252,21 @@ public partial class SlotPicker : PanelContainer
         _list.AddChild(MakeLabel("ACTIVE", 14, Gold, spacing: 2));
         if (active == null)
         {
-            var unreadable = SlotStore.Manager.IsProfileInitialized && SlotStore.Manager.HasMultiplayerRunSave;
+            var unreadable = SlotStore.Manager.IsProfileInitialized && SlotStore.HasActive(_host.Kind);
             _list.AddChild(unreadable
-                ? MakeLabel(SlotText.Unreadable, 17, Warn)
-                : MakeLabel("No active run. Host starts a new one.", 17, Muted));
+                ? MakeLabel(SlotText.Unreadable(_host.Kind), 17, Warn)
+                : MakeLabel(SlotText.NoActive(_host.Kind), 17, Muted));
             return;
         }
 
         var row = RunRow(active, me, note, noteColour: Warn);
-        AddButtons(row, MakeButton("Park this run", "park", () => Act(SlotActions.ParkActiveRun)));
+        AddButtons(row, MakeButton("Park this run", "park", () => Act(() => SlotActions.ParkActiveRun(_host.Kind))));
         _list.AddChild(row);
     }
 
     private void BuildParked(IReadOnlyList<Slot> all, IReadOnlyList<Slot> listed, ulong me)
     {
+        _parked = listed.Count;
         _list.AddChild(MakeLabel(listed.Count == 0 ? "PARKED" : $"PARKED ({listed.Count})", 14, Gold, spacing: 2));
         if (listed.Count == 0)
         {
@@ -257,7 +303,7 @@ public partial class SlotPicker : PanelContainer
     {
         var row = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
         row.AddThemeConstantOverride("separation", 2);
-        row.AddChild(MakeLabel(SlotText.Players(run, me, PlayerNames.NameOf), 18, Ink));
+        row.AddChild(MakeLabel(SlotText.Who(_host.Kind, run, me, PlayerNames.NameOf), 18, Ink));
         row.AddChild(MakeLabel($"{SlotText.Progress(run)}  ·  {SlotText.Saved(run.SaveTime)}", 15, Muted));
         if (note != null)
         {
@@ -321,19 +367,20 @@ public partial class SlotPicker : PanelContainer
     }
 
     /// <summary>
-    /// Explicit controller paths: right from the Join tile into the list, left back out, and up and
-    /// down between rows. Rebuilt with the list, since the buttons are new each time.
+    /// Explicit controller paths: right from the game's buttons beside the picker (the Join tile, or the
+    /// main menu's text buttons) into the list, left back out, and up and down between rows. Rebuilt
+    /// with the list, since the buttons are new each time.
     /// </summary>
     private void WireFocus()
     {
-        var join = MultiplayerMenu.JoinButton(_submenu);
-        var hasJoin = join != null && IsInstanceValid(join);
         var first = _rows.FirstOrDefault()?.FirstOrDefault();
-        if (hasJoin)
+        foreach (var entry in _host.EntryButtons.Where(IsInstanceValid))
         {
-            _joinRightAsScene ??= join!.FocusNeighborRight;
-            join!.FocusNeighborRight = first != null ? first.GetPath() : _joinRightAsScene;
+            _entryRightAsScene.TryAdd(entry, entry.FocusNeighborRight);
+            entry.FocusNeighborRight = first != null ? first.GetPath() : _entryRightAsScene[entry];
         }
+        var join = _host.ExitButton;
+        var hasJoin = join != null && IsInstanceValid(join);
 
         for (var r = 0; r < _rows.Count; r++)
         {
@@ -355,7 +402,7 @@ public partial class SlotPicker : PanelContainer
     /// <summary>Runs one change to the saves, then makes the game's buttons and this list match.</summary>
     private void Act(Func<string> action)
     {
-        var why = SlotActions.WhyNotNow(_submenu);
+        var why = SlotActions.WhyNotNow(_host);
         if (why != null)
         {
             SetStatus(why, Warn);
@@ -378,7 +425,7 @@ public partial class SlotPicker : PanelContainer
         {
             try
             {
-                MultiplayerMenu.RefreshButtons(_submenu);
+                _host.RefreshButtons();
             }
             finally
             {
@@ -388,15 +435,26 @@ public partial class SlotPicker : PanelContainer
         Rebuild(focusKey, owner is SlotButton);
     }
 
-    /// <summary>Makes the game's tiles and this list match the saves on disk, rebuilding the list once.</summary>
+    /// <summary>
+    /// Makes the game's tiles and this list match the saves on disk, rebuilding the list once. The main
+    /// menu's redraw loads the solo save, and so can itself set a damaged file aside and ask for this
+    /// again: that is followed here, a bounded number of times, rather than on every frame.
+    /// </summary>
     private void RedrawAll()
     {
         var owner = GetViewport()?.GuiGetFocusOwner();
-        var focusKey = KeyOf(owner) ?? KeyOf(MultiplayerMenu.LastFocused(_submenu));
+        var focusKey = KeyOf(owner) ?? KeyOf(_host.LastFocused);
         _acting = true;
         try
         {
-            MultiplayerMenu.RefreshButtons(_submenu);
+            for (var pass = 0; pass < 3; pass++) // the save and its .backup, then the menu without either
+            {
+                _host.RefreshButtons();
+                if (!RefreshRequested.Remove(_host.Kind))
+                {
+                    break;
+                }
+            }
         }
         finally
         {
@@ -405,14 +463,22 @@ public partial class SlotPicker : PanelContainer
         Rebuild(focusKey, owner is SlotButton);
     }
 
-    /// <summary>Asks every open picker to redraw on its next frame, after the game changed the saves itself.</summary>
-    public static void RequestRefresh() => _refreshRequested = true;
+    /// <summary>Asks the open picker for this kind of run to redraw on its next frame, after the game changed the saves itself.</summary>
+    public static void RequestRefresh(SaveKind kind) => RefreshRequested.Add(kind);
 
     public override void _Process(double delta)
     {
-        if (_refreshRequested && IsVisibleInTree())
+        var shown = _host.Shown;
+        if (Visible != shown)
         {
-            _refreshRequested = false;
+            Visible = shown;
+            if (shown)
+            {
+                Refresh(); // back from another screen: the profile, and so the saves, may have changed
+            }
+        }
+        if (IsVisibleInTree() && RefreshRequested.Remove(_host.Kind))
+        {
             RedrawAll();
         }
         FitTiles(); // every frame, so tiles never sit under the picker after Host and Load swap places
@@ -428,7 +494,7 @@ public partial class SlotPicker : PanelContainer
     /// <summary>Greys the buttons out while a swap would be unsafe (a lobby starting, a popup open).</summary>
     private void UpdateBlocked()
     {
-        var why = SlotActions.WhyNotNow(_submenu);
+        var why = SlotActions.WhyNotNow(_host);
         if (why == _blocked)
         {
             return;
@@ -448,7 +514,7 @@ public partial class SlotPicker : PanelContainer
     /// </summary>
     private void FitTiles()
     {
-        if (!IsVisibleInTree() || MultiplayerMenu.ButtonContainer(_submenu) is not { } container)
+        if (!IsVisibleInTree() || _host.Tiles is not { } container)
         {
             return;
         }
@@ -498,12 +564,12 @@ public partial class SlotPicker : PanelContainer
     /// </summary>
     private float BackButtonRight()
     {
-        if (_submenu.GetNodeOrNull<NBackButton>("BackButton") is not { } back)
+        if (_host.Menu.GetNodeOrNull<NBackButton>("BackButton") is not { } back)
         {
             return 0;
         }
         var shown = BackShownPosition(back);
-        return shown.X - _submenu.GlobalPosition.X + back.Size.X; // not its hover-animated scale
+        return shown.X - _host.Menu.GlobalPosition.X + back.Size.X; // not its hover-animated scale
     }
 
     private static readonly HarmonyLib.AccessTools.FieldRef<NBackButton, Vector2> BackShownPosition =

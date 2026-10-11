@@ -1,6 +1,7 @@
 using System.Reflection;
 using Godot;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Saves;
@@ -58,6 +59,57 @@ public static class MultiplayerMenu
     public static ref Control? LastFocused(NMultiplayerSubmenu submenu) => ref LastFocusedField(submenu);
 }
 
+/// <summary>The multiplayer menu as the multiplayer picker's host.</summary>
+public sealed class MultiplayerHost(NMultiplayerSubmenu submenu) : IPickerHost
+{
+    public SaveKind Kind => SaveKind.Multiplayer;
+
+    public Control Menu => submenu;
+
+    public void Add(SlotPicker picker)
+    {
+        submenu.AddChild(picker);
+        // Under the game's loading overlay, so it is covered while a lobby starts.
+        if (MultiplayerMenu.Overlay(submenu) is { } overlay && overlay.GetParent() == submenu)
+        {
+            submenu.MoveChild(picker, overlay.GetIndex());
+        }
+    }
+
+    public bool Shown => true; // the submenu itself is hidden behind the screens it opens
+
+    public bool StartsClosed => false;
+
+    public string? WhyNotHere()
+    {
+        if (NGame.Instance?.MainMenu?.SubmenuStack.Peek() != submenu)
+        {
+            return "Only available on the multiplayer menu.";
+        }
+        if (MultiplayerMenu.IsLoading(submenu))
+        {
+            return "Hosting has started.";
+        }
+        return null;
+    }
+
+    public void RefreshButtons() => MultiplayerMenu.RefreshButtons(submenu);
+
+    public Control? LastFocused
+    {
+        get => MultiplayerMenu.LastFocused(submenu);
+        set => MultiplayerMenu.LastFocused(submenu) = value;
+    }
+
+    public Control? DefaultFocus => submenu.DefaultFocusedControl;
+
+    public IReadOnlyList<Control> EntryButtons => ExitButton is { } join ? [join] : [];
+
+    public Control? ExitButton => MultiplayerMenu.JoinButton(submenu) is { } join && GodotObject.IsInstanceValid(join) ? join : null;
+
+    public Control? Tiles => MultiplayerMenu.ButtonContainer(submenu);
+}
+
 [HarmonyPatch(typeof(NMultiplayerSubmenu), nameof(NMultiplayerSubmenu._Ready))]
 public static class AttachPickerPatch
 {
@@ -66,7 +118,7 @@ public static class AttachPickerPatch
         try
         {
             OldVersion.StandDown(__instance);
-            SlotPicker.AttachTo(__instance);
+            SlotPicker.AttachTo(new MultiplayerHost(__instance));
         }
         catch (Exception ex)
         {
@@ -129,23 +181,29 @@ public static class RefreshOnButtonsPatch
 [HarmonyPatch(typeof(SaveManager), nameof(SaveManager.DeleteCurrentMultiplayerRun))]
 public static class SnapshotBeforeDeletePatch
 {
-    private static void Prefix() => SlotActions.SnapshotBeforeGameDeletes();
+    private static void Prefix() => SlotActions.SnapshotBeforeGameDeletes(SaveKind.Multiplayer);
 }
 
 /// <summary>Keeps a copy of a multiplayer save that failed the game's load check, before it is renamed to *.corrupt.</summary>
 [HarmonyPatch(typeof(RunSaveManager), nameof(RunSaveManager.RenameBrokenMultiplayerRunSave))]
 public static class SnapshotBeforeRenamePatch
 {
-    private static void Prefix() => SlotActions.SnapshotBeforeGameSetsAside();
+    private static void Prefix() => SlotActions.SnapshotBeforeGameSetsAside(SaveKind.Multiplayer);
 }
 
 /// <summary>
-/// Keeps a copy of a multiplayer save the game could not read or migrate, before it is renamed to
-/// *.corrupt. The game routes every save type through here; only the multiplayer save and its backup
-/// are copied.
+/// Keeps a copy of a run save the game could not read or migrate, before it is renamed to *.corrupt.
+/// The game routes every save type through here; only the multiplayer and solo saves and their backups
+/// are copied, each into its own kind's folder.
 /// </summary>
 [HarmonyPatch(typeof(MigrationManager), "PreserveCorruptFile")]
 public static class SnapshotBeforePreservePatch
 {
-    private static void Prefix(string savePath) => SlotActions.SnapshotBeforeGameSetsAside(savePath);
+    private static void Prefix(string savePath)
+    {
+        foreach (var kind in Enum.GetValues<SaveKind>())
+        {
+            SlotActions.SnapshotBeforeGameSetsAside(kind, savePath);
+        }
+    }
 }

@@ -63,6 +63,7 @@ public static class LizardTailMod
             "NMultiplayerSubmenu._Ready", "NMultiplayerSubmenu.OnSubmenuShown",
             "NMultiplayerSubmenu.UpdateButtons", "SaveManager.DeleteCurrentMultiplayerRun",
             "RunSaveManager.RenameBrokenMultiplayerRunSave", "MigrationManager.PreserveCorruptFile",
+            "NMainMenu._Ready", "NMainMenu.RefreshButtons", "SaveManager.DeleteCurrentRun",
             "UserDataPathProvider.get_IsRunningModded", "NGame.CheckShowModdedSaveFilePopup",
         };
         var missing = expected.Where(e => !patched.Contains(e)).ToList();
