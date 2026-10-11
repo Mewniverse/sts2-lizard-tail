@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace SaveSlots.SaveSlotsCode.Core;
+namespace LizardTail.LizardTailCode.Core;
 
 /// <summary>One player in a saved run.</summary>
 public readonly record struct RunPlayer(ulong NetId, string CharacterId, int Hp, int MaxHp);

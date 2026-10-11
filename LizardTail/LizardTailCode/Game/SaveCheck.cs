@@ -2,9 +2,9 @@ using System.Text;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Migrations;
-using SaveSlots.SaveSlotsCode.Core;
+using LizardTail.LizardTailCode.Core;
 
-namespace SaveSlots.SaveSlotsCode.Game;
+namespace LizardTail.LizardTailCode.Game;
 
 /// <summary>
 /// Loads a parked run the way the multiplayer menu's Load does (migrate, deserialize, then check it

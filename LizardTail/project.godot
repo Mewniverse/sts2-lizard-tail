@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="SaveSlots"
+config/name="LizardTail"
 config/features=PackedStringArray("4.5", "C#", "Mobile")
 config/icon=""
 
@@ -24,7 +24,7 @@ window/stretch/aspect="expand"
 
 [dotnet]
 
-project/assembly_name="SaveSlots"
+project/assembly_name="LizardTail"
 
 [rendering]
 

@@ -29,10 +29,10 @@ jobs:
       # --locked-mode fails if the resolved dependency graph differs from the committed lock file,
       # so a dependency cannot change without that change appearing in the diff.
       - name: Restore (locked)
-        run: dotnet restore tests/SaveSlots.Tests/SaveSlots.Tests.csproj --locked-mode
+        run: dotnet restore tests/LizardTail.Tests/LizardTail.Tests.csproj --locked-mode
 
       - name: Test
-        run: dotnet test tests/SaveSlots.Tests/SaveSlots.Tests.csproj --no-restore --verbosity normal
+        run: dotnet test tests/LizardTail.Tests/LizardTail.Tests.csproj --no-restore --verbosity normal
 
   audit:
     name: Dependency audit
@@ -52,6 +52,6 @@ jobs:
       # The mod project cannot be compiled here: it links the game's own assemblies, which are not
       # redistributable and are therefore not in this repository. Restoring it is enough to run
       # NuGetAudit against it. It keeps no lock file, because the Godot SDK resolves a different
-      # graph per configuration; see the comment in SaveSlots.csproj.
+      # graph per configuration; see the comment in LizardTail.csproj.
       - name: Restore the mod project
-        run: dotnet restore SaveSlots/SaveSlots.csproj
+        run: dotnet restore LizardTail/LizardTail.csproj

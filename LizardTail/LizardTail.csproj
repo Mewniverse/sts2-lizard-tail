@@ -58,15 +58,15 @@
         <PackageReference Include="Alchyr.Sts2.ModAnalyzers" Version="0.1.9" />
         <!-- Generates a .pck file when building if only using simple assets. May not work on all setups. Uncomment to test. -->
         <!-- <PackageReference Include="BSchneppe.StS2.PckPacker" Version="0.1.1" PrivateAssets="All" /> -->
-        <AdditionalFiles Include="SaveSlots/localization/**/*.json"/> <!-- Used by analyzer -->
+        <AdditionalFiles Include="LizardTail/localization/**/*.json"/> <!-- Used by analyzer -->
     </ItemGroup>
 
     <ItemGroup>
-        <Compile Remove="SaveSlots/**" />
+        <Compile Remove="LizardTail/**" />
         <Compile Remove="materials/**" />
         <Compile Remove="shaders/**" />
         <Compile Remove="images/**" />
-        <EmbeddedResource Remove="SaveSlots/**" />
+        <EmbeddedResource Remove="LizardTail/**" />
         <EmbeddedResource Remove="materials/**" />
         <EmbeddedResource Remove="shaders/**" />
         <EmbeddedResource Remove="images/**" />
@@ -75,9 +75,9 @@
     <ItemGroup>
         <None Condition="Exists('Directory.Build.props')" Include="Directory.Build.props"/>
         <None Include=".gitignore" />
-        <None Include="SaveSlots.json" />
+        <None Include="LizardTail.json" />
         <None Include="project.godot"/>
-        <None Include="SaveSlots/**" />
+        <None Include="LizardTail/**" />
     </ItemGroup>
     
     <Target Name="CheckDependencyPaths" >
@@ -96,14 +96,14 @@
              than failing a build whose compile step succeeded. -->
         <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModsPath)$(MSBuildProjectName)/"
               ContinueOnError="WarnAndContinue">
-            <Output TaskParameter="CopiedFiles" ItemName="_SaveSlotsCopied" />
+            <Output TaskParameter="CopiedFiles" ItemName="_LizardTailCopied" />
         </Copy>
         <Copy SourceFiles="$(AssemblyName).json" DestinationFolder="$(ModsPath)$(MSBuildProjectName)/"
               ContinueOnError="WarnAndContinue" />
         <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="$(ModsPath)$(MSBuildProjectName)/"
               ContinueOnError="WarnAndContinue" />
-        <Message Condition="'@(_SaveSlotsCopied)' == ''" Importance="high"
-                 Text="Save Slots: could not install into the mods folder, most likely because the game is running. Quit the game and build again." />
+        <Message Condition="'@(_LizardTailCopied)' == ''" Importance="high"
+                 Text="Lizard Tail: could not install into the mods folder, most likely because the game is running. Quit the game and build again." />
     </Target>
 
     <Target Name="CopyQuickPck" AfterTargets="PackPck" Condition="Exists('$(PckPackerOutputPath)') And '$(PckPackerSkipped)' != 'true'">

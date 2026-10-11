@@ -32,12 +32,12 @@ function Invoke-Step {
     }
 }
 
-Invoke-Step "Unit tests" { dotnet test tests/SaveSlots.Tests/SaveSlots.Tests.csproj --nologo --verbosity minimal }
+Invoke-Step "Unit tests" { dotnet test tests/LizardTail.Tests/LizardTail.Tests.csproj --nologo --verbosity minimal }
 
 Invoke-Step "Dependency audit" { & "$PSScriptRoot/Audit-Dependencies.ps1" }
 
 if (-not $SkipBuild) {
-    Invoke-Step "Mod build" { dotnet build SaveSlots/SaveSlots.csproj -c Release --nologo --verbosity minimal }
+    Invoke-Step "Mod build" { dotnet build LizardTail/LizardTail.csproj -c Release --nologo --verbosity minimal }
 }
 
 Pop-Location

@@ -23,8 +23,8 @@
 #>
 param(
     [string[]]$Projects = @(
-        "SaveSlots/SaveSlots.csproj",
-        "tests/SaveSlots.Tests/SaveSlots.Tests.csproj"
+        "LizardTail/LizardTail.csproj",
+        "tests/LizardTail.Tests/LizardTail.Tests.csproj"
     ),
     [switch]$FailOnFloating = $true
 )

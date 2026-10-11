@@ -6,9 +6,9 @@ using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Managers;
 using MegaCrit.Sts2.Core.Saves.Migrations;
-using SaveSlots.SaveSlotsCode.Core;
+using LizardTail.LizardTailCode.Core;
 
-namespace SaveSlots.SaveSlotsCode.Game;
+namespace LizardTail.LizardTailCode.Game;
 
 /// <summary>
 /// The game's multiplayer menu (Host / Load / Join / Abandon), and the hooks that put the picker on it.
@@ -65,12 +65,49 @@ public static class AttachPickerPatch
     {
         try
         {
+            OldVersion.StandDown(__instance);
             SlotPicker.AttachTo(__instance);
         }
         catch (Exception ex)
         {
             ModLog.Error($"Could not add the save picker to the multiplayer menu: {ex}");
         }
+    }
+}
+
+/// <summary>
+/// Lizard Tail was called Save Slots before v0.2.0 (mod id SaveSlots). A copy of that version left in
+/// the mods folder loads as well, and two pickers would manage the same saves. Removes its patches the
+/// first time the multiplayer menu opens, and its picker from that first menu.
+/// </summary>
+public static class OldVersion
+{
+    private const string HarmonyId = "SaveSlots";
+    private const string PickerName = "SaveSlotsPicker";
+    private static bool _checked;
+
+    public static void StandDown(NMultiplayerSubmenu submenu)
+    {
+        if (!_checked)
+        {
+            _checked = true;
+            var harmony = new Harmony(LizardTailMod.ModId);
+            var removed = 0;
+            foreach (var method in Harmony.GetAllPatchedMethods().ToList())
+            {
+                if (Harmony.GetPatchInfo(method)?.Owners.Contains(HarmonyId) == true)
+                {
+                    harmony.Unpatch(method, HarmonyPatchType.All, HarmonyId);
+                    removed++;
+                }
+            }
+            if (removed > 0)
+            {
+                ModLog.Warn($"The old Save Slots version is also installed; switched off its {removed} patches. Delete mods/SaveSlots to remove it.");
+            }
+        }
+        // Its picker may already be on this menu: its patch on the same method can run before or after this one.
+        Callable.From(() => submenu.GetNodeOrNull(PickerName)?.QueueFree()).CallDeferred();
     }
 }
 

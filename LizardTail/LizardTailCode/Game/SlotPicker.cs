@@ -1,9 +1,9 @@
 using Godot;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
-using SaveSlots.SaveSlotsCode.Core;
+using LizardTail.LizardTailCode.Core;
 
-namespace SaveSlots.SaveSlotsCode.Game;
+namespace LizardTail.LizardTailCode.Game;
 
 /// <summary>
 /// The panel on the multiplayer menu listing the active multiplayer run and every parked one.
@@ -12,7 +12,7 @@ namespace SaveSlots.SaveSlotsCode.Game;
 /// </summary>
 public partial class SlotPicker : PanelContainer
 {
-    public const string NodeName = "SaveSlotsPicker";
+    public const string NodeName = "LizardTailPicker";
 
     private const float Width = 520;
     private const float Margin = 40;
@@ -58,7 +58,7 @@ public partial class SlotPicker : PanelContainer
         if (!_loggedFolder && SlotStore.Manager.IsProfileInitialized)
         {
             _loggedFolder = true;
-            ModLog.Info($"Parked runs for this profile are in {SlotStore.Local.GetFullPath(SlotStore.SlotDir)}");
+            ModLog.Info($"Parked runs for this profile are in {SlotStore.Local.GetFullPath(SlotStore.SlotDir)} ({(SharedSaves.UsingNormalSaves ? "normal saves" : "separate modded saves")})");
         }
     }
 

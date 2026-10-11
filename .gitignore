@@ -7,5 +7,9 @@ obj/
 .vs/
 .idea/
 
-# Machine-specific build paths. Copy SaveSlots/Directory.Build.props.example to set them.
+# Machine-specific build paths. Copy LizardTail/Directory.Build.props.example to set them.
 Directory.Build.props
+
+# Release artifacts and Steam Workshop upload staging: built outputs, not source.
+dist/
+workshop/

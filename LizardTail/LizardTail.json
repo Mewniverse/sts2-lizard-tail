@@ -1,9 +1,9 @@
 {
-  "id": "SaveSlots",
-  "name": "Save Slots",
+  "id": "LizardTail",
+  "name": "Lizard Tail",
   "author": "jerry",
   "description": "Keep several multiplayer runs instead of one. A picker on the multiplayer screen lists your saved runs with who was in them and how far you got, and swaps the one you choose into the game's single multiplayer save slot. The run it replaces is kept, never deleted.",
-  "version": "v0.1.0",
+  "version": "v0.2.0",
   "min_game_version": "0.111.0",
   "has_pck": false,
   "has_dll": true,

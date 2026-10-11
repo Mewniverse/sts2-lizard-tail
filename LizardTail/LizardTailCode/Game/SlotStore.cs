@@ -1,11 +1,12 @@
 using System.Globalization;
 using System.Text;
+using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Managers;
-using SaveSlots.SaveSlotsCode.Core;
+using LizardTail.LizardTailCode.Core;
 
-namespace SaveSlots.SaveSlotsCode.Game;
+namespace LizardTail.LizardTailCode.Game;
 
 /// <summary>A parked run: one file in the mod's slot folder.</summary>
 public sealed record Slot(string FileName, string Path, RunSummary? Summary, SlotState State);
@@ -20,7 +21,12 @@ public sealed record Slot(string FileName, string Path, RunSummary? Summary, Slo
 /// </summary>
 public static class SlotStore
 {
-    private const string Root = "mod_data/SaveSlots";
+    private const string RootName = "mod_data/LizardTail";
+
+    /// <summary>Where the mod kept everything while it was called Save Slots (before v0.2.0).</summary>
+    private const string OldRootName = "mod_data/SaveSlots";
+
+    private static bool _rootChecked;
 
     private static readonly AccessTools.FieldRef<SaveManager, ISaveStore> StoreField =
         AccessTools.FieldRefAccess<SaveManager, ISaveStore>("_saveStore");
@@ -42,10 +48,70 @@ public static class SlotStore
     /// <summary>Recomputed every time: it changes with the profile and with modded/unmodded paths.</summary>
     public static string ActivePath => RunSaveManager.GetRunSavePath(ProfileId, RunSaveManager.multiplayerRunSaveFileName);
 
-    /// <summary>This profile's folder of the mod: the game's own profile folder name, under mod_data.</summary>
+    /// <summary>The mod's folder in mod_data, moved over from its old name the first time it is needed.</summary>
+    private static string Root
+    {
+        get
+        {
+            if (!_rootChecked)
+            {
+                _rootChecked = true;
+                MoveOldRoot();
+            }
+            return RootName;
+        }
+    }
+
+    /// <summary>
+    /// The mod was called Save Slots before v0.2.0 and kept its files in mod_data/SaveSlots. Renames that
+    /// folder once, so parked runs, trash and remembered names carry over. Left alone if the new folder
+    /// already exists, so nothing is ever merged over.
+    /// </summary>
+    private static void MoveOldRoot()
+    {
+        try
+        {
+            if (!Local.DirectoryExists(OldRootName) || Local.DirectoryExists(RootName))
+            {
+                return;
+            }
+            var error = DirAccess.RenameAbsolute(Local.GetFullPath(OldRootName), Local.GetFullPath(RootName));
+            if (error == Error.Ok)
+            {
+                ModLog.Info($"Moved {OldRootName} to {RootName} (the mod's old name)");
+            }
+            else
+            {
+                ModLog.Warn($"Could not move {OldRootName} to {RootName} ({error}); runs parked under the old name stay there");
+            }
+        }
+        catch (Exception ex)
+        {
+            ModLog.Warn($"Could not move {OldRootName} to {RootName}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// This profile's folder of the mod: the game's own profile folder name, under mod_data. That is
+    /// modded/profileN while the game keeps separate modded saves, or profileN while it shares the
+    /// normal ones (see <see cref="SharedSaves"/>).
+    /// </summary>
     public static string ProfileFolder => $"{Root}/{UserDataPathProvider.GetProfileDir(ProfileId)}";
 
     public static string SlotDir => $"{ProfileFolder}/slots";
+
+    /// <summary>
+    /// The slot folder of the other kind of profile (modded or normal). Runs parked there are listed too,
+    /// so switching between shared and separate saves never hides a parked run.
+    /// </summary>
+    private static string OtherSlotDir
+    {
+        get
+        {
+            var modded = UserDataPathProvider.GetAccountDir().Length > 0;
+            return $"{Root}/{UserDataPathProvider.GetProfileDir(ProfileId, !modded)}/slots";
+        }
+    }
 
     public static string TrashDir => $"{ProfileFolder}/trash";
 
@@ -165,25 +231,35 @@ public static class SlotStore
         return ending;
     }
 
-    /// <summary>Every file in the slot folder, readable or not, in no particular order.</summary>
+    /// <summary>
+    /// Every parked file, readable or not, in no particular order: this profile's slot folder, then the
+    /// other kind of profile's (see <see cref="OtherSlotDir"/>).
+    /// </summary>
     public static IReadOnlyList<Slot> AllSlots(ulong localPlayerId)
     {
-        if (!Local.DirectoryExists(SlotDir))
-        {
-            return Array.Empty<Slot>();
-        }
-
         var latest = Manager.GetLatestSchemaVersion<SerializableRun>();
         var endings = new Dictionary<long, RunEnding>();
         var slots = new List<Slot>();
-        foreach (var file in Local.GetFilesInDirectory(SlotDir))
+        foreach (var dir in new[] { SlotDir, OtherSlotDir }.Distinct())
+        {
+            if (Local.DirectoryExists(dir))
+            {
+                ReadSlots(dir, localPlayerId, latest, endings, slots);
+            }
+        }
+        return slots;
+    }
+
+    private static void ReadSlots(string dir, ulong localPlayerId, int latest, Dictionary<long, RunEnding> endings, List<Slot> slots)
+    {
+        foreach (var file in Local.GetFilesInDirectory(dir))
         {
             if (!file.EndsWith(".save", StringComparison.OrdinalIgnoreCase))
             {
                 continue; // .backup and .tmp siblings the store writes
             }
 
-            var path = $"{SlotDir}/{file}";
+            var path = $"{dir}/{file}";
             try
             {
                 var summary = RunSummary.TryParse(Local.ReadFile(path));
@@ -201,7 +277,6 @@ public static class SlotStore
                 slots.Add(new Slot(file, path, null, SlotState.Unreadable));
             }
         }
-        return slots;
     }
 
     /// <summary>The parked runs to show: the newest copy of each, newest first, leaving out the active run.</summary>

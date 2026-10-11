@@ -1,7 +1,7 @@
-using SaveSlots.SaveSlotsCode.Core;
+using LizardTail.LizardTailCode.Core;
 using Xunit;
 
-namespace SaveSlots.Tests;
+namespace LizardTail.Tests;
 
 public class SlotRulesTests
 {

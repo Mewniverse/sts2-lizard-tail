@@ -4,13 +4,13 @@ version: 2
 # restore. Pairs with the pinned versions and lock file in the project files.
 updates:
   - package-ecosystem: nuget
-    directory: /tests/SaveSlots.Tests
+    directory: /tests/LizardTail.Tests
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
 
   - package-ecosystem: nuget
-    directory: /SaveSlots
+    directory: /LizardTail
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

@@ -7,9 +7,9 @@ using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Platform.Steam;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
-using SaveSlots.SaveSlotsCode.Core;
+using LizardTail.LizardTailCode.Core;
 
-namespace SaveSlots.SaveSlotsCode.Game;
+namespace LizardTail.LizardTailCode.Game;
 
 /// <summary>
 /// Parking, activating and trashing runs. Parked files are never overwritten or deleted: each copy of a

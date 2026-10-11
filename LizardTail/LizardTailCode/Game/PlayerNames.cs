@@ -2,9 +2,9 @@ using System.Globalization;
 using System.Text.Json;
 using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Platform.Steam;
-using SaveSlots.SaveSlotsCode.Core;
+using LizardTail.LizardTailCode.Core;
 
-namespace SaveSlots.SaveSlotsCode.Game;
+namespace LizardTail.LizardTailCode.Game;
 
 /// <summary>
 /// Steam names for the people in a run. Saves hold only Steam ids, so names come from Steam when it

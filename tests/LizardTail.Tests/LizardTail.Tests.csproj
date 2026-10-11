@@ -11,7 +11,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <RootNamespace>SaveSlots.Tests</RootNamespace>
+    <RootNamespace>LizardTail.Tests</RootNamespace>
     <!-- Supply-chain controls; see scripts/Audit-Dependencies.ps1. -->
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>
@@ -23,7 +23,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="../../SaveSlots/SaveSlotsCode/Core/*.cs" Link="Linked/Core/%(Filename)%(Extension)" />
+    <Compile Include="../../LizardTail/LizardTailCode/Core/*.cs" Link="Linked/Core/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

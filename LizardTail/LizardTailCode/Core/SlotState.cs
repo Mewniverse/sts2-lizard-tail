@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace SaveSlots.SaveSlotsCode.Core;
+namespace LizardTail.LizardTailCode.Core;
 
 /// <summary>Whether a parked run can be made the active one, and if not, why.</summary>
 public enum SlotState

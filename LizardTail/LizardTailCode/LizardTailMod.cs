@@ -2,15 +2,15 @@ using System.Reflection;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
-using SaveSlots.SaveSlotsCode.Core;
+using LizardTail.LizardTailCode.Core;
 using Logger = MegaCrit.Sts2.Core.Logging.Logger;
 
-namespace SaveSlots.SaveSlotsCode;
+namespace LizardTail.LizardTailCode;
 
 /// <summary>Routes the mod's logging seam to the game's logger.</summary>
-internal sealed class GameLog : ISaveSlotsLog
+internal sealed class GameLog : ILizardTailLog
 {
-    private readonly Logger _logger = new(SaveSlotsMod.ModId, LogType.Generic);
+    private readonly Logger _logger = new(LizardTailMod.ModId, LogType.Generic);
 
     public void Info(string message) => _logger.Info(message);
     public void Warn(string message) => _logger.Warn(message);
@@ -19,14 +19,14 @@ internal sealed class GameLog : ISaveSlotsLog
 
 /// <summary>Mod entry point. The game calls <see cref="Initialize"/> once after loading the assembly.</summary>
 [ModInitializer(nameof(Initialize))]
-public static class SaveSlotsMod
+public static class LizardTailMod
 {
-    public const string ModId = "SaveSlots";
+    public const string ModId = "LizardTail";
 
     public static void Initialize()
     {
         ModLog.Current = new GameLog();
-        ModLog.Info("Initializing Save Slots");
+        ModLog.Info("Initializing Lizard Tail");
 
         // Registers this assembly's Node subclasses (the picker, its buttons) with Godot so their
         // overrides are called.
@@ -63,12 +63,13 @@ public static class SaveSlotsMod
             "NMultiplayerSubmenu._Ready", "NMultiplayerSubmenu.OnSubmenuShown",
             "NMultiplayerSubmenu.UpdateButtons", "SaveManager.DeleteCurrentMultiplayerRun",
             "RunSaveManager.RenameBrokenMultiplayerRunSave", "MigrationManager.PreserveCorruptFile",
+            "UserDataPathProvider.get_IsRunningModded", "NGame.CheckShowModdedSaveFilePopup",
         };
         var missing = expected.Where(e => !patched.Contains(e)).ToList();
         if (missing.Count > 0)
         {
             ModLog.Error($"These patches did not apply, so the features behind them are off: {string.Join(", ", missing)}");
         }
-        ModLog.Info($"Save Slots ready ({patched.Count} patches)");
+        ModLog.Info($"Lizard Tail ready ({patched.Count} patches)");
     }
 }

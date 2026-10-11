@@ -1,8 +1,7 @@
-# Save Slots
+# Lizard Tail
 
-A Slay the Spire 2 mod that keeps several multiplayer runs instead of one. The repository is named
-after Lizard Tail, the relic that brings you back from the dead, since that is what the mod does for an
-abandoned run.
+A Slay the Spire 2 mod that keeps several multiplayer runs instead of one. It is named after Lizard
+Tail, the relic that brings you back from the dead, since that is what it does for an abandoned run.
 
 The game has a single multiplayer save. If your groups change from night to night, with different
 friends and different subsets of them, you either finish a run in one sitting or abandon it to host
@@ -59,12 +58,25 @@ The game's own rules apply when you press **Load**:
 - Any two or more of them can continue. The game asks you to confirm when someone is missing, and
   the missing players stay in the run for next time.
 
+## Your normal saves stay in use
+
+Out of the box, the game switches to a separate, modded profile as soon as any mod loads. Its
+one-time copy of your progress into that profile does not survive the Steam Cloud sync at the same
+launch, so the first modded launch can land on a blank profile at ascension 0.
+
+Lizard Tail keeps the game on your normal profile, with your progress and your normal multiplayer save,
+as long as every loaded mod declares that it does not affect gameplay. Load any mod that does, and the
+game keeps its separate modded profile as usual. Spirebird's "unify save paths" option does the same
+for every mod; with both installed, whichever applies keeps the normal profile, and they never work
+against each other.
+
 ## Where things are kept
 
-Parked runs are files under `%APPDATA%\SlayTheSpire2\steam\<your id>\mod_data\SaveSlots\`, in a
-folder named like the game's own profile folder: `modded\profile<N>\` while mods are loaded, or
-`profile<N>\` when a mod (Spirebird's shared save paths, for example) makes modded play use the normal
-profile. The game's log names the exact folder when the multiplayer menu first opens.
+Parked runs are files under `%APPDATA%\SlayTheSpire2\steam\<your id>\mod_data\LizardTail\`, in a
+folder named like the game's own profile folder: `profile<N>\` while the normal profile is in use, or
+`modded\profile<N>\` while the game keeps separate modded saves. The panel lists runs parked under
+either, so switching between them never hides one. The game's log names the exact folder when the
+multiplayer menu first opens.
 
 - `slots\`: parked runs, one file per copy (`<run start>-<save time>.save`). Nothing here is ever
   overwritten.
@@ -72,7 +84,7 @@ profile. The game's log names the exact folder when the multiplayer menu first o
 - `revived-history\`: abandon records moved aside.
 
 Damaged saves the mod kept are named `damaged-…` or `set-aside-…` instead. One more file sits directly
-in `mod_data\SaveSlots\`: `names.json`, the Steam names of the people in your runs, remembered so they
+in `mod_data\LizardTail\`: `names.json`, the Steam names of the people in your runs, remembered so they
 still show when Steam is offline or someone leaves your friends list.
 
 They stay on this PC. Steam Cloud does not sync them, and the game never cleans that folder.
@@ -92,22 +104,26 @@ damaged (the panel then shows its backup); pressing Load once lets the game repa
 
 ## Installing
 
-Put `SaveSlots.dll` and `SaveSlots.json` (from a [release](https://github.com/jerryhebert/sts2-lizard-tail/releases),
-or built yourself as below) in a `mods/SaveSlots/` folder inside your Slay the Spire 2 install, and
+Put `LizardTail.dll` and `LizardTail.json` (from a [release](https://github.com/jerryhebert/sts2-lizard-tail/releases),
+or built yourself as below) in a `mods/LizardTail/` folder inside your Slay the Spire 2 install, and
 restart the game. The mod declares `affects_gameplay: false`, so your friends do not need
 it to join your games.
+
+Lizard Tail was called Save Slots before v0.2.0. If you had that version, delete `mods/SaveSlots/`
+so the two do not both load. Runs you parked carry over by themselves: the first time the new version
+needs them, it renames `mod_data\SaveSlots\` to `mod_data\LizardTail\`.
 
 ## Building
 
 Requires the [.NET 9 SDK](https://dotnet.microsoft.com/download) (9.0.318 or a later 9.0 release,
 pinned in `global.json`) and a copy of the game, whose assemblies the mod compiles against. The project
 finds a Steam install automatically; if yours lives elsewhere, copy
-`SaveSlots/Directory.Build.props.example` to `SaveSlots/Directory.Build.props` (it is git-ignored) and
+`LizardTail/Directory.Build.props.example` to `LizardTail/Directory.Build.props` (it is git-ignored) and
 set `Sts2Path`. Building also installs the mod into the game's `mods` folder (skipped with a warning
 while the game is running).
 
 ```bash
-dotnet build SaveSlots/SaveSlots.csproj -c Release
+dotnet build LizardTail/LizardTail.csproj -c Release
 ```
 
 ```bash
@@ -118,8 +134,8 @@ Runs the unit tests, the dependency audit and a Release build. Add `-SkipBuild` 
 game installed; the unit tests need only the SDK.
 
 The pure logic (reading saves, history records, which copies are listed or stale, file names,
-wording) is in `SaveSlots/SaveSlotsCode/Core` and is unit-tested without the game.
-`SaveSlotsCode/Game` holds the save-store operations, the picker and the Harmony patches.
+wording) is in `LizardTail/LizardTailCode/Core` and is unit-tested without the game.
+`LizardTailCode/Game` holds the save-store operations, the picker and the Harmony patches.
 
 ## License and attribution
 
