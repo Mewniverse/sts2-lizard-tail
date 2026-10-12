@@ -12,4 +12,3 @@ Directory.Build.props
 
 # Release artifacts and Steam Workshop upload staging: built outputs, not source.
 dist/
-workshop/
