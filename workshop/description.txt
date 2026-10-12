@@ -1,0 +1,22 @@
+[h1]Lizard Tail[/h1]
+Keep several runs instead of one. The game has a single solo save and a single multiplayer save, so starting something new means finishing or abandoning what you had. Lizard Tail lets you park a run, start another, and pick the parked one up later.
+
+[h2]Solo runs[/h2]
+A [b]Solo runs[/b] panel on the main menu. [b]Park this run[/b] frees the slot so Singleplayer starts a new run. [b]Make active[/b] swaps a parked run back in, and Continue picks it up.
+
+[h2]Multiplayer runs[/h2]
+A [b]Multiplayer runs[/b] panel on the multiplayer menu, with the same buttons and who was in each run. Any two or more of a run's players can continue it. Only the host needs the mod.
+
+[h2]Safe by design[/h2]
+[list]
+[*]Nothing is ever deleted. Whatever was active is parked before a swap, and Trash moves files to a trash folder.
+[*]Every run is checked before it is made active: the game must be able to load it with your current version and mods.
+[*]Pressing Abandon keeps a copy first, so an abandoned run can be picked up again.
+[*]Swaps go through the game's own save system, so Steam Cloud stays in step.
+[*]Keeps your normal profile in use with mods on, as long as every loaded mod leaves gameplay alone.
+[/list]
+
+Parked runs are kept on this PC only, under the game's mod_data folder.
+
+[h2]Credits[/h2]
+Made by jerry ([url=https://github.com/jerryhebert/sts2-lizard-tail]jerryhebert/sts2-lizard-tail[/url], MIT license). Solo support by Moon ([url=https://github.com/Mewniverse/sts2-lizard-tail]Mewniverse/sts2-lizard-tail[/url]).
