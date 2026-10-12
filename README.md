@@ -137,6 +137,19 @@ Lizard Tail was called Save Slots before v0.2.0. If you had that version, delete
 so the two do not both load. Runs you parked carry over by themselves: the first time the new version
 needs them, it renames `mod_data\SaveSlots\` to `mod_data\LizardTail\`.
 
+## Publishing to the Steam Workshop
+
+```powershell
+pwsh tools\Publish-Workshop.ps1           # build and stage only
+pwsh tools\Publish-Workshop.ps1 -Upload   # build, stage and upload
+```
+
+The listing lives in `workshop/` (title, description, preview image, visibility). The upload runs Mega
+Crit's [mod uploader](https://github.com/megacrit/sts2-mod-uploader) against the Steam client signed in on
+that PC. The first upload writes `workshop/mod_id.txt`; commit it so later uploads update the same item.
+Subscribers then get each new version through Steam, so remove any hand-installed `mods/LizardTail/`
+copy once you are subscribed.
+
 ## Building
 
 Requires the [.NET 9 SDK](https://dotnet.microsoft.com/download) (9.0.318 or a later 9.0 release,
